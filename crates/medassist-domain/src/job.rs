@@ -25,7 +25,10 @@ impl JobState {
         }
     }
     pub fn is_terminal(&self) -> bool {
-        matches!(self, JobState::Completed | JobState::Failed | JobState::Cancelled)
+        matches!(
+            self,
+            JobState::Completed | JobState::Failed | JobState::Cancelled
+        )
     }
 }
 

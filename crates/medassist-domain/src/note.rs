@@ -51,7 +51,11 @@ pub struct SoapSection {
 
 impl SoapSection {
     pub fn professional(user_id: Uuid, text: impl Into<String>) -> Self {
-        Self { text: text.into(), provenance: Provenance::professional(user_id), reviewed: true }
+        Self {
+            text: text.into(),
+            provenance: Provenance::professional(user_id),
+            reviewed: true,
+        }
     }
 }
 
@@ -69,10 +73,18 @@ impl SoapContent {
     /// Names of sections that are still absent — used to signal gaps.
     pub fn missing_sections(&self) -> Vec<&'static str> {
         let mut v = Vec::new();
-        if self.subjective.is_none() { v.push("subjective"); }
-        if self.objective.is_none() { v.push("objective"); }
-        if self.assessment.is_none() { v.push("assessment"); }
-        if self.plan.is_none() { v.push("plan"); }
+        if self.subjective.is_none() {
+            v.push("subjective");
+        }
+        if self.objective.is_none() {
+            v.push("objective");
+        }
+        if self.assessment.is_none() {
+            v.push("assessment");
+        }
+        if self.plan.is_none() {
+            v.push("plan");
+        }
         v
     }
 
@@ -108,7 +120,11 @@ impl SoapContent {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NoteBody {
     Soap(Box<SoapContent>),
-    FreeText { text: String, provenance: Provenance, reviewed: bool },
+    FreeText {
+        text: String,
+        provenance: Provenance,
+        reviewed: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,7 +188,10 @@ impl Note {
             return Err(DomainError::ImmutableField);
         }
         if expected_version != self.version {
-            return Err(DomainError::VersionConflict { expected: expected_version, found: self.version });
+            return Err(DomainError::VersionConflict {
+                expected: expected_version,
+                found: self.version,
+            });
         }
         self.body = new_body;
         self.version += 1;
@@ -181,7 +200,11 @@ impl Note {
     }
 
     /// Mark a section as reviewed by the professional.
-    pub fn mark_section_reviewed(&mut self, section: &str, now: DateTime<Utc>) -> Result<(), DomainError> {
+    pub fn mark_section_reviewed(
+        &mut self,
+        section: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(), DomainError> {
         if matches!(self.status, NoteStatus::Finalised | NoteStatus::Amended) {
             return Err(DomainError::ImmutableField);
         }
@@ -269,14 +292,27 @@ impl Note {
     }
 
     /// A finalised note is immutable; corrections create an amendment note.
-    pub fn create_amendment(&self, new_id: Uuid, body: NoteBody, now: DateTime<Utc>) -> Result<Note, DomainError> {
+    pub fn create_amendment(
+        &self,
+        new_id: Uuid,
+        body: NoteBody,
+        now: DateTime<Utc>,
+    ) -> Result<Note, DomainError> {
         if self.status != NoteStatus::Finalised {
             return Err(DomainError::IllegalTransition {
                 from: self.status.as_str().to_owned(),
                 to: "amended-source".into(),
             });
         }
-        let mut n = Note::new_draft(new_id, self.org_id, self.encounter_id, self.patient_id, self.author_id, body, now);
+        let mut n = Note::new_draft(
+            new_id,
+            self.org_id,
+            self.encounter_id,
+            self.patient_id,
+            self.author_id,
+            body,
+            now,
+        );
         n.amends_note_id = Some(self.id);
         Ok(n)
     }
@@ -295,7 +331,10 @@ mod tests {
                 text: "provável enxaqueca".into(),
                 provenance: Provenance::new(
                     ProvenanceKind::AiSuggestion,
-                    SourceRef::AiJob { id: Uuid::new_v4(), model: Some("test-model".into()) },
+                    SourceRef::AiJob {
+                        id: Uuid::new_v4(),
+                        model: Some("test-model".into()),
+                    },
                 ),
                 reviewed: false,
             }),
@@ -304,7 +343,15 @@ mod tests {
     }
 
     fn mk_note(author: Uuid) -> Note {
-        Note::new_draft(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), author, soap_with_ai_assessment(author), Utc::now())
+        Note::new_draft(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            author,
+            soap_with_ai_assessment(author),
+            Utc::now(),
+        )
     }
 
     #[test]
@@ -331,7 +378,10 @@ mod tests {
 
         // Fill plan + review assessment then it succeeds.
         if let NoteBody::Soap(s) = &mut n.body {
-            s.plan = Some(SoapSection::professional(author, "analgésico e retorno em 7 dias"));
+            s.plan = Some(SoapSection::professional(
+                author,
+                "analgésico e retorno em 7 dias",
+            ));
         }
         n.mark_section_reviewed("assessment", Utc::now()).unwrap();
         n.finalise(author, Utc::now(), false).unwrap();
@@ -345,10 +395,13 @@ mod tests {
         let v = n.version;
         // Stale client (e.g. an async AI job that started before a human edit).
         let stale = v - 1;
-        let err = n.apply_edit(stale, soap_with_ai_assessment(author), Utc::now()).unwrap_err();
+        let err = n
+            .apply_edit(stale, soap_with_ai_assessment(author), Utc::now())
+            .unwrap_err();
         assert!(matches!(err, DomainError::VersionConflict { .. }));
         // Correct version works and bumps.
-        n.apply_edit(v, soap_with_ai_assessment(author), Utc::now()).unwrap();
+        n.apply_edit(v, soap_with_ai_assessment(author), Utc::now())
+            .unwrap();
         assert_eq!(n.version, v + 1);
     }
 
@@ -361,10 +414,14 @@ mod tests {
             s.assessment.as_mut().unwrap().reviewed = true;
         }
         n.finalise(author, Utc::now(), false).unwrap();
-        let err = n.apply_edit(n.version, n.body.clone(), Utc::now()).unwrap_err();
+        let err = n
+            .apply_edit(n.version, n.body.clone(), Utc::now())
+            .unwrap_err();
         assert!(matches!(err, DomainError::ImmutableField));
 
-        let amended = n.create_amendment(Uuid::new_v4(), soap_with_ai_assessment(author), Utc::now()).unwrap();
+        let amended = n
+            .create_amendment(Uuid::new_v4(), soap_with_ai_assessment(author), Utc::now())
+            .unwrap();
         assert_eq!(amended.amends_note_id, Some(n.id));
         assert_eq!(amended.status, NoteStatus::Draft);
     }
@@ -375,12 +432,27 @@ mod tests {
         let body = NoteBody::Soap(Box::new(SoapContent {
             subjective: Some(SoapSection {
                 text: "relato do paciente".into(),
-                provenance: Provenance::new(ProvenanceKind::Transcription, SourceRef::Transcription { id: Uuid::new_v4(), start_ms: None, end_ms: None }),
+                provenance: Provenance::new(
+                    ProvenanceKind::Transcription,
+                    SourceRef::Transcription {
+                        id: Uuid::new_v4(),
+                        start_ms: None,
+                        end_ms: None,
+                    },
+                ),
                 reviewed: false,
             }),
             ..Default::default()
         }));
-        let mut n = Note::new_draft(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), author, body, Utc::now());
+        let mut n = Note::new_draft(
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            author,
+            body,
+            Utc::now(),
+        );
         assert!(n.finalise(author, Utc::now(), false).is_err());
         // Explicit override is allowed (and would be audited at app layer).
         n.finalise(author, Utc::now(), true).unwrap();

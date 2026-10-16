@@ -34,8 +34,7 @@ impl DoubleLlm {
         Self::default()
     }
     pub fn set_fail(&self, fail: bool) {
-        self.fail
-            .store(fail, std::sync::atomic::Ordering::SeqCst);
+        self.fail.store(fail, std::sync::atomic::Ordering::SeqCst);
     }
     fn failing(&self) -> bool {
         self.fail.load(std::sync::atomic::Ordering::SeqCst)
@@ -59,7 +58,9 @@ impl LanguageModelProvider for DoubleLlm {
         _timeout: Duration,
     ) -> Result<EngineDraft, AppError> {
         if self.failing() {
-            return Err(AppError::ExternalService("double-llm configured to fail".into()));
+            return Err(AppError::ExternalService(
+                "double-llm configured to fail".into(),
+            ));
         }
         // Deterministic echo: only content present in the authorised inputs is
         // reproduced, so grounding validation passes for genuine data and the
@@ -96,10 +97,7 @@ impl ClinicalDocumentationEngine for DoubleEngine {
         "test-double-engine".into()
     }
     async fn generate(&self, req: &DocumentationRequest) -> Result<NoteBody, AppError> {
-        let d = self
-            .0
-            .generate_draft(req, Duration::from_secs(5))
-            .await?;
+        let d = self.0.generate_draft(req, Duration::from_secs(5)).await?;
         let mk = |t: Option<String>| -> Option<SoapSection> {
             t.map(|text| SoapSection {
                 text,
@@ -118,6 +116,6 @@ impl ClinicalDocumentationEngine for DoubleEngine {
             objective: mk(d.objective),
             assessment: mk(d.assessment),
             plan: mk(d.plan),
-        }))
+        })))
     }
 }

@@ -51,7 +51,10 @@ impl ExternalIdentifier {
     pub fn validate(&self) -> Result<(), DomainError> {
         let trimmed = self.value.trim();
         if trimmed.is_empty() {
-            return Err(DomainError::validation("external_id.value", "must not be empty"));
+            return Err(DomainError::validation(
+                "external_id.value",
+                "must not be empty",
+            ));
         }
         if trimmed.len() > 128 {
             return Err(DomainError::validation(
@@ -59,18 +62,20 @@ impl ExternalIdentifier {
                 "must be at most 128 characters",
             ));
         }
-        match self.system {
+        if self.system == ExternalIdSystem::Cns {
             // CNS format: 16 digits, first digit 1..9 (simplified structural check).
-            ExternalIdSystem::Cns => {
-                let digits: Vec<char> = trimmed.chars().filter(|c| c.is_ascii_digit()).collect();
-                if digits.len() != 16 || !digits[0].to_digit(10).map(|d| (1..=9).contains(&d)).unwrap_or(false) {
-                    return Err(DomainError::validation(
-                        "external_id.value",
-                        "CNS must have 16 digits starting with 1-9",
-                    ));
-                }
+            let digits: Vec<char> = trimmed.chars().filter(|c| c.is_ascii_digit()).collect();
+            if digits.len() != 16
+                || !digits[0]
+                    .to_digit(10)
+                    .map(|d| (1..=9).contains(&d))
+                    .unwrap_or(false)
+            {
+                return Err(DomainError::validation(
+                    "external_id.value",
+                    "CNS must have 16 digits starting with 1-9",
+                ));
             }
-            _ => {}
         }
         Ok(())
     }
@@ -80,7 +85,10 @@ impl ExternalIdentifier {
         format!(
             "{:?}:{}",
             self.system,
-            self.value.trim().to_uppercase().replace([' ', '-', '.'], "")
+            self.value
+                .trim()
+                .to_uppercase()
+                .replace([' ', '-', '.'], "")
         )
     }
 }
@@ -91,7 +99,11 @@ mod tests {
 
     #[test]
     fn rejects_blank_external_id() {
-        let id = ExternalIdentifier { system: ExternalIdSystem::Mrn, value: "   ".into(), issuer: None };
+        let id = ExternalIdentifier {
+            system: ExternalIdSystem::Mrn,
+            value: "   ".into(),
+            issuer: None,
+        };
         assert!(id.validate().is_err());
     }
 
@@ -122,8 +134,16 @@ mod tests {
 
     #[test]
     fn normalisation_ignores_separators_and_case() {
-        let a = ExternalIdentifier { system: ExternalIdSystem::HealthPlan, value: "ab-123 x".into(), issuer: None };
-        let b = ExternalIdentifier { system: ExternalIdSystem::HealthPlan, value: "AB123X ".into(), issuer: None };
+        let a = ExternalIdentifier {
+            system: ExternalIdSystem::HealthPlan,
+            value: "ab-123 x".into(),
+            issuer: None,
+        };
+        let b = ExternalIdentifier {
+            system: ExternalIdSystem::HealthPlan,
+            value: "AB123X ".into(),
+            issuer: None,
+        };
         assert_eq!(a.normalised_key(), b.normalised_key());
     }
 }

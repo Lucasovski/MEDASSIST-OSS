@@ -111,7 +111,11 @@ impl NewEncounter {
 }
 
 impl Encounter {
-    pub fn transition(&mut self, to: EncounterStatus, now: DateTime<Utc>) -> Result<(), DomainError> {
+    pub fn transition(
+        &mut self,
+        to: EncounterStatus,
+        now: DateTime<Utc>,
+    ) -> Result<(), DomainError> {
         if !self.status.can_transition_to(&to) {
             return Err(DomainError::IllegalTransition {
                 from: self.status.as_str().to_owned(),
@@ -158,7 +162,9 @@ mod tests {
     #[test]
     fn cannot_finalise_from_open() {
         let mut e = enc();
-        let err = e.transition(EncounterStatus::Finalised, Utc::now()).unwrap_err();
+        let err = e
+            .transition(EncounterStatus::Finalised, Utc::now())
+            .unwrap_err();
         assert!(matches!(err, DomainError::IllegalTransition { .. }));
     }
 

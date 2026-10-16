@@ -11,9 +11,9 @@ use medassist_domain::job::{AsyncJob, JobKind, JobState};
 use medassist_domain::note::Note;
 use medassist_domain::patient::Patient;
 use medassist_domain::prov::Provenance;
-use medassist_domain::transcription::{RecordingConsent, Transcription, TranscriptSegment};
+use medassist_domain::transcription::{RecordingConsent, TranscriptSegment, Transcription};
 
-use crate::errors::{AppError, Actor};
+use crate::errors::{Actor, AppError};
 
 #[derive(Debug, Clone)]
 pub struct Page<T> {
@@ -36,16 +36,33 @@ pub trait PatientRepository: Send + Sync {
     async fn get(&self, actor: &Actor, id: Uuid) -> Result<Option<Patient>, AppError>;
     async fn search(&self, actor: &Actor, q: &PatientQuery) -> Result<Page<Patient>, AppError>;
     async fn update(&self, p: &Patient) -> Result<(), AppError>;
-    async fn soft_delete(&self, actor: &Actor, id: Uuid, now: DateTime<Utc>) -> Result<bool, AppError>;
+    async fn soft_delete(
+        &self,
+        actor: &Actor,
+        id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool, AppError>;
     /// Candidates for duplicate review (advisory only — never auto-merged).
-    async fn duplicate_candidates(&self, actor: &Actor, name: String, birth: Option<chrono::NaiveDate>, external_keys: Vec<String>) -> Result<Vec<(Patient, f64)>, AppError>;
+    async fn duplicate_candidates(
+        &self,
+        actor: &Actor,
+        name: String,
+        birth: Option<chrono::NaiveDate>,
+        external_keys: Vec<String>,
+    ) -> Result<Vec<(Patient, f64)>, AppError>;
 }
 
 #[async_trait]
 pub trait EncounterRepository: Send + Sync {
     async fn insert(&self, e: &Encounter) -> Result<(), AppError>;
     async fn get(&self, actor: &Actor, id: Uuid) -> Result<Option<Encounter>, AppError>;
-    async fn list_for_patient(&self, actor: &Actor, patient_id: Uuid, limit: i64, offset: i64) -> Result<Page<Encounter>, AppError>;
+    async fn list_for_patient(
+        &self,
+        actor: &Actor,
+        patient_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Page<Encounter>, AppError>;
     async fn update(&self, e: &Encounter) -> Result<(), AppError>;
 }
 
@@ -53,10 +70,19 @@ pub trait EncounterRepository: Send + Sync {
 pub trait NoteRepository: Send + Sync {
     async fn insert(&self, n: &Note) -> Result<(), AppError>;
     async fn get(&self, actor: &Actor, id: Uuid) -> Result<Option<Note>, AppError>;
-    async fn list_for_encounter(&self, actor: &Actor, encounter_id: Uuid) -> Result<Vec<Note>, AppError>;
+    async fn list_for_encounter(
+        &self,
+        actor: &Actor,
+        encounter_id: Uuid,
+    ) -> Result<Vec<Note>, AppError>;
     /// Persist an edit *and* its snapshot atomically; version guard enforced
     /// in SQL (`WHERE version = expected`) so races fail with a conflict.
-    async fn update_with_version_guard(&self, n: &Note, expected_version: u32, edited_by: Uuid) -> Result<(), AppError>;
+    async fn update_with_version_guard(
+        &self,
+        n: &Note,
+        expected_version: u32,
+        edited_by: Uuid,
+    ) -> Result<(), AppError>;
     async fn append_version_snapshot(&self, n: &Note, edited_by: Uuid) -> Result<(), AppError>;
 }
 
@@ -64,8 +90,20 @@ pub trait NoteRepository: Send + Sync {
 pub trait DocumentRepository: Send + Sync {
     async fn insert(&self, d: &ClinicalDocument) -> Result<(), AppError>;
     async fn get(&self, actor: &Actor, id: Uuid) -> Result<Option<ClinicalDocument>, AppError>;
-    async fn set_state(&self, actor: &Actor, id: Uuid, state: medassist_domain::document::ProcessingState, error: Option<String>) -> Result<(), AppError>;
-    async fn list_for_patient(&self, actor: &Actor, patient_id: Uuid, limit: i64, offset: i64) -> Result<Page<ClinicalDocument>, AppError>;
+    async fn set_state(
+        &self,
+        actor: &Actor,
+        id: Uuid,
+        state: medassist_domain::document::ProcessingState,
+        error: Option<String>,
+    ) -> Result<(), AppError>;
+    async fn list_for_patient(
+        &self,
+        actor: &Actor,
+        patient_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Page<ClinicalDocument>, AppError>;
 }
 
 /// Blob storage port. Implementations must keep originals immutable.
@@ -108,16 +146,42 @@ pub trait ConsentRepository: Send + Sync {
 pub trait TranscriptionRepository: Send + Sync {
     async fn insert(&self, t: &Transcription) -> Result<(), AppError>;
     async fn get(&self, actor: &Actor, id: Uuid) -> Result<Option<Transcription>, AppError>;
-    async fn complete(&self, actor: &Actor, id: Uuid, segments: Vec<TranscriptSegment>, engine: &str, engine_version: Option<String>, now: DateTime<Utc>) -> Result<(), AppError>;
-    async fn fail(&self, actor: &Actor, id: Uuid, error: String, now: DateTime<Utc>) -> Result<(), AppError>;
-    async fn mark_reviewed(&self, actor: &Actor, id: Uuid, now: DateTime<Utc>) -> Result<(), AppError>;
+    async fn complete(
+        &self,
+        actor: &Actor,
+        id: Uuid,
+        segments: Vec<TranscriptSegment>,
+        engine: &str,
+        engine_version: Option<String>,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError>;
+    async fn fail(
+        &self,
+        actor: &Actor,
+        id: Uuid,
+        error: String,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError>;
+    async fn mark_reviewed(
+        &self,
+        actor: &Actor,
+        id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError>;
 }
 
 #[async_trait]
 pub trait JobRepository: Send + Sync {
     async fn insert(&self, j: &AsyncJob) -> Result<(), AppError>;
     async fn claim_next(&self, kind: JobKind) -> Result<Option<AsyncJob>, AppError>;
-    async fn transition(&self, id: Uuid, from: JobState, to: JobState, error: Option<String>, result_ref: Option<String>) -> Result<bool, AppError>;
+    async fn transition(
+        &self,
+        id: Uuid,
+        from: JobState,
+        to: JobState,
+        error: Option<String>,
+        result_ref: Option<String>,
+    ) -> Result<bool, AppError>;
     async fn get(&self, actor: &Actor, id: Uuid) -> Result<Option<AsyncJob>, AppError>;
 }
 
@@ -154,7 +218,11 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_email(&self, email: &str) -> Result<Option<UserRecord>, AppError>;
     async fn insert(&self, u: &NewUserRecord) -> Result<Uuid, AppError>;
     async fn update_password_hash(&self, user_id: Uuid, hash: String) -> Result<(), AppError>;
-    async fn register_login_success(&self, user_id: Uuid, now: DateTime<Utc>) -> Result<(), AppError>;
+    async fn register_login_success(
+        &self,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError>;
     async fn register_login_failure(&self, user_id: Uuid) -> Result<(), AppError>;
     async fn lock_until(&self, user_id: Uuid, until: DateTime<Utc>) -> Result<(), AppError>;
 }
@@ -197,8 +265,7 @@ pub trait SessionRepository: Send + Sync {
 }
 
 /// Template registry for note templates (versioned JSON definitions).
-#[derive(Debug, Clone)]
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct NoteTemplate {
     pub id: Uuid,
     pub org_id: Option<Uuid>, // None => built-in
@@ -227,6 +294,17 @@ pub struct CodeSuggestion {
 
 #[async_trait]
 pub trait CodingRepository: Send + Sync {
-    async fn search_codes(&self, system: &str, text: &str, limit: i64) -> Result<Vec<CodeSuggestion>, AppError>;
-    async fn upsert_code(&self, system: &str, version: &str, code: &str, display: &str) -> Result<(), AppError>;
+    async fn search_codes(
+        &self,
+        system: &str,
+        text: &str,
+        limit: i64,
+    ) -> Result<Vec<CodeSuggestion>, AppError>;
+    async fn upsert_code(
+        &self,
+        system: &str,
+        version: &str,
+        code: &str,
+        display: &str,
+    ) -> Result<(), AppError>;
 }

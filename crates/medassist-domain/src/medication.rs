@@ -44,10 +44,16 @@ pub struct Dose {
 impl Dose {
     pub fn validate(&self) -> Result<(), DomainError> {
         if !self.amount.is_finite() || self.amount <= 0.0 {
-            return Err(DomainError::validation("dose.amount", "must be a positive finite number"));
+            return Err(DomainError::validation(
+                "dose.amount",
+                "must be a positive finite number",
+            ));
         }
         if self.unit.trim().is_empty() || self.unit.len() > 24 {
-            return Err(DomainError::validation("dose.unit", "must be a non-empty short unit string"));
+            return Err(DomainError::validation(
+                "dose.unit",
+                "must be a non-empty short unit string",
+            ));
         }
         Ok(())
     }
@@ -74,7 +80,10 @@ pub struct MedicationStatement {
 impl MedicationStatement {
     pub fn validate(&self) -> Result<(), DomainError> {
         if self.name.trim().is_empty() {
-            return Err(DomainError::validation("name", "medication name must not be empty"));
+            return Err(DomainError::validation(
+                "name",
+                "medication name must not be empty",
+            ));
         }
         if self.name.chars().count() > 300 {
             return Err(DomainError::validation("name", "medication name too long"));
@@ -84,14 +93,21 @@ impl MedicationStatement {
         }
         if let (Some(s), Some(e)) = (self.start_date, self.end_date) {
             if e < s {
-                return Err(DomainError::InvalidDateRange { start: s.to_string(), end: e.to_string() });
+                return Err(DomainError::InvalidDateRange {
+                    start: s.to_string(),
+                    end: e.to_string(),
+                });
             }
         }
         // Reported medications must not silently become prescriptions.
-        if matches!(self.status, MedicationStatus::Prescribed | MedicationStatus::ActiveConfirmed)
-            && !self.provenance.kind.is_confirmed_fact()
+        if matches!(
+            self.status,
+            MedicationStatus::Prescribed | MedicationStatus::ActiveConfirmed
+        ) && !self.provenance.kind.is_confirmed_fact()
         {
-            return Err(DomainError::ProvenanceRequired(self.provenance.kind.as_str().to_owned()));
+            return Err(DomainError::ProvenanceRequired(
+                self.provenance.kind.as_str().to_owned(),
+            ));
         }
         Ok(())
     }
@@ -109,37 +125,66 @@ mod tests {
             patient_id: Uuid::new_v4(),
             name: "Losartana 50 mg".into(),
             status,
-            dose: Some(Dose { amount: 50.0, unit: "mg".into() }),
+            dose: Some(Dose {
+                amount: 50.0,
+                unit: "mg".into(),
+            }),
             route: Some(MedicationRoute::Oral),
             frequency: Some("12/12h".into()),
             start_date: NaiveDate::from_ymd_opt(2024, 1, 1),
             end_date: None,
-            provenance: Provenance::new(kind, SourceRef::Practitioner { user_id: Uuid::new_v4() }),
+            provenance: Provenance::new(
+                kind,
+                SourceRef::Practitioner {
+                    user_id: Uuid::new_v4(),
+                },
+            ),
             created_at: Utc::now(),
         }
     }
 
     #[test]
     fn prescribed_requires_professional_provenance() {
-        let ok = stmt(MedicationStatus::Prescribed, ProvenanceKind::ProfessionalEntry);
+        let ok = stmt(
+            MedicationStatus::Prescribed,
+            ProvenanceKind::ProfessionalEntry,
+        );
         ok.validate().unwrap();
         let bad = stmt(MedicationStatus::Prescribed, ProvenanceKind::AiSuggestion);
-        assert!(matches!(bad.validate(), Err(DomainError::ProvenanceRequired(_))));
+        assert!(matches!(
+            bad.validate(),
+            Err(DomainError::ProvenanceRequired(_))
+        ));
     }
 
     #[test]
     fn patient_reported_medication_is_allowed_with_patient_provenance() {
-        let s = stmt(MedicationStatus::ReportedByPatient, ProvenanceKind::PatientReport);
+        let s = stmt(
+            MedicationStatus::ReportedByPatient,
+            ProvenanceKind::PatientReport,
+        );
         s.validate().unwrap();
     }
 
     #[test]
     fn rejects_nonpositive_dose_and_bad_dates() {
-        let mut s = stmt(MedicationStatus::ActiveConfirmed, ProvenanceKind::ProfessionalEntry);
-        s.dose = Some(Dose { amount: -1.0, unit: "mg".into() });
+        let mut s = stmt(
+            MedicationStatus::ActiveConfirmed,
+            ProvenanceKind::ProfessionalEntry,
+        );
+        s.dose = Some(Dose {
+            amount: -1.0,
+            unit: "mg".into(),
+        });
         assert!(s.validate().is_err());
-        s.dose = Some(Dose { amount: 50.0, unit: "mg".into() });
+        s.dose = Some(Dose {
+            amount: 50.0,
+            unit: "mg".into(),
+        });
         s.end_date = NaiveDate::from_ymd_opt(2023, 1, 1); // before start
-        assert!(matches!(s.validate(), Err(DomainError::InvalidDateRange { .. })));
+        assert!(matches!(
+            s.validate(),
+            Err(DomainError::InvalidDateRange { .. })
+        ));
     }
 }

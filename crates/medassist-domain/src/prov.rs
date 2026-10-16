@@ -57,7 +57,11 @@ pub enum SourceRef {
     /// An uploaded document (PDF/lab/etc.), optionally with a page/offset.
     Document { id: Uuid, locator: Option<String> },
     /// A transcription, optionally a time range within it.
-    Transcription { id: Uuid, start_ms: Option<u64>, end_ms: Option<u64> },
+    Transcription {
+        id: Uuid,
+        start_ms: Option<u64>,
+        end_ms: Option<u64>,
+    },
     /// An AI job that produced a draft.
     AiJob { id: Uuid, model: Option<String> },
     /// Entered live by a practitioner session.
@@ -103,7 +107,11 @@ mod tests {
     fn provenance_roundtrips_json() {
         let p = Provenance::new(
             ProvenanceKind::Transcription,
-            SourceRef::Transcription { id: Uuid::new_v4(), start_ms: Some(0), end_ms: Some(1500) },
+            SourceRef::Transcription {
+                id: Uuid::new_v4(),
+                start_ms: Some(0),
+                end_ms: Some(1500),
+            },
         );
         let s = serde_json::to_string(&p).unwrap();
         let back: Provenance = serde_json::from_str(&s).unwrap();

@@ -142,8 +142,14 @@ impl LanguageModelProvider for OllamaLlm {
         let body = OllamaChatReq {
             model: &self.model,
             messages: vec![
-                Msg { role: "system", content: Self::system_prompt() },
-                Msg { role: "user", content: &user },
+                Msg {
+                    role: "system",
+                    content: Self::system_prompt(),
+                },
+                Msg {
+                    role: "user",
+                    content: &user,
+                },
             ],
             format: "json",
             stream: false,
@@ -187,7 +193,8 @@ mod tests {
 
     #[test]
     fn extracts_balanced_json_from_prose() {
-        let t = r#"Here you go: {"subjective": "dor há {3} dias", "flagged_gaps": ["plan"]} trailing"#;
+        let t =
+            r#"Here you go: {"subjective": "dor há {3} dias", "flagged_gaps": ["plan"]} trailing"#;
         let v = extract_json(t).expect("json");
         assert_eq!(v["subjective"].as_str().unwrap(), "dor há {3} dias");
         assert_eq!(v["flagged_gaps"].as_array().unwrap().len(), 1);

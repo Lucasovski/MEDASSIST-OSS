@@ -15,7 +15,9 @@ pub struct FsBlobStore {
 
 impl FsBlobStore {
     pub fn new(root: impl AsRef<Path>) -> Self {
-        Self { root: root.as_ref().to_path_buf() }
+        Self {
+            root: root.as_ref().to_path_buf(),
+        }
     }
 
     fn resolve(&self, key: &str) -> Result<PathBuf, AppError> {
@@ -25,7 +27,9 @@ impl FsBlobStore {
             (Some(o), Some(i), None) => (o, i),
             _ => return Err(AppError::Unprocessable("invalid blob key".into())),
         };
-        let parse = |s: &str| Uuid::parse_str(s).map_err(|_| AppError::Unprocessable("invalid blob key".into()));
+        let parse = |s: &str| {
+            Uuid::parse_str(s).map_err(|_| AppError::Unprocessable("invalid blob key".into()))
+        };
         let (_o, _i) = (parse(org)?, parse(id)?);
         let p = self.root.join(org).join(id);
         Ok(p)
@@ -91,7 +95,10 @@ mod tests {
         let key = s.put(org, doc, b"hello").await.unwrap();
         assert_eq!(s.get(&key).await.unwrap(), b"hello");
         // immutable: second put conflicts
-        assert!(matches!(s.put(org, doc, b"other").await, Err(AppError::Conflict(_))));
+        assert!(matches!(
+            s.put(org, doc, b"other").await,
+            Err(AppError::Conflict(_))
+        ));
         assert!(s.get("../../etc/passwd").await.is_err());
         assert!(s.get(&format!("{org}/{doc}/extra")).await.is_err());
         s.delete(&key).await.unwrap();

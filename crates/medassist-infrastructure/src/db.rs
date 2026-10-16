@@ -1,6 +1,6 @@
 //! Shared PostgreSQL pool wrapper and migration runner.
 
-use sqlx::postgres::{PgPoolOptions, PgPool};
+use sqlx::postgres::{PgPool, PgPoolOptions};
 
 #[derive(Clone)]
 pub struct Db(pub PgPool);

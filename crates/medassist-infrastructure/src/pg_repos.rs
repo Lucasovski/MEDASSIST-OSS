@@ -12,9 +12,10 @@ use uuid::Uuid;
 
 use medassist_application::errors::{Actor, AppError};
 use medassist_application::ports::{
-    AuditEvent, AuditOutcome, AuditSink, ConsentRepository, DocumentRepository, EncounterRepository,
-    JobRepository, NewUserRecord, NoteRepository, NoteTemplate, Page, PatientQuery, PatientRepository,
-    SessionRecord, SessionRepository, TemplateRepository, TranscriptionRepository, UserRepository, UserRecord,
+    AuditEvent, AuditOutcome, AuditSink, ConsentRepository, DocumentRepository,
+    EncounterRepository, JobRepository, NewUserRecord, NoteRepository, NoteTemplate, Page,
+    PatientQuery, PatientRepository, SessionRecord, SessionRepository, TemplateRepository,
+    TranscriptionRepository, UserRecord, UserRepository,
 };
 use medassist_domain::document::{ClinicalDocument, DocumentKind, ProcessingState};
 use medassist_domain::encounter::{Encounter, EncounterStatus};
@@ -23,7 +24,7 @@ use medassist_domain::job::{AsyncJob, JobKind, JobState};
 use medassist_domain::note::{Note, NoteBody, NoteStatus};
 use medassist_domain::patient::{Patient, Sex};
 use medassist_domain::transcription::{
-    RecordingConsent, Transcription, TranscriptionState, TranscriptSegment,
+    RecordingConsent, TranscriptSegment, Transcription, TranscriptionState,
 };
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -77,9 +78,7 @@ fn enc_status_from(s: &str) -> Result<EncounterStatus> {
         "closed" => EncounterStatus::Closed,
         "finalised" => EncounterStatus::Finalised,
         "cancelled" => EncounterStatus::Cancelled,
-        _other => {
-            return Err(AppError::internal(InternalMsg("unknown encounter status")))
-        }
+        _other => return Err(AppError::internal(InternalMsg("unknown encounter status"))),
     })
 }
 
@@ -193,8 +192,7 @@ pub struct PgPatients(pub PgPool);
 impl PgPatients {
     fn map_row(row: &PgRow) -> Result<Patient> {
         let external_ids: serde_json::Value = row.try_get("external_ids").map_err(err)?;
-        let ids: Vec<ExternalIdentifier> =
-            serde_json::from_value(external_ids).unwrap_or_default();
+        let ids: Vec<ExternalIdentifier> = serde_json::from_value(external_ids).unwrap_or_default();
         Ok(Patient {
             id: row.try_get("id").map_err(err)?,
             org_id: row.try_get("org_id").map_err(err)?,
@@ -268,11 +266,13 @@ impl PatientRepository for PgPatients {
             .await
             .map_err(err)?
         } else {
-            sqlx::query_scalar("SELECT count(*) FROM patients WHERE org_id=$1 AND deleted_at IS NULL")
-                .bind(actor.org_id)
-                .fetch_one(&self.0)
-                .await
-                .map_err(err)?
+            sqlx::query_scalar(
+                "SELECT count(*) FROM patients WHERE org_id=$1 AND deleted_at IS NULL",
+            )
+            .bind(actor.org_id)
+            .fetch_one(&self.0)
+            .await
+            .map_err(err)?
         };
         let rows = if let Some(t) = &q.text {
             let like = format!("%{}%", t.trim().to_lowercase());
@@ -365,7 +365,9 @@ impl PatientRepository for PgPatients {
             .map_err(err)?;
             for r in &rows {
                 let p = Self::map_row(r)?;
-                let same_name = p.family_name.eq_ignore_ascii_case(name.split_whitespace().next_back().unwrap_or(""));
+                let same_name = p
+                    .family_name
+                    .eq_ignore_ascii_case(name.split_whitespace().next_back().unwrap_or(""));
                 out.push((p, if same_name { 0.9 } else { 0.6 }));
             }
         }
@@ -388,8 +390,6 @@ impl PatientRepository for PgPatients {
         Ok(out)
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Encounters
@@ -456,14 +456,13 @@ impl EncounterRepository for PgEncounters {
         limit: i64,
         offset: i64,
     ) -> Result<Page<Encounter>> {
-        let total: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM encounters WHERE patient_id=$1 AND org_id=$2",
-        )
-        .bind(patient_id)
-        .bind(actor.org_id)
-        .fetch_one(&self.0)
-        .await
-        .map_err(err)?;
+        let total: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM encounters WHERE patient_id=$1 AND org_id=$2")
+                .bind(patient_id)
+                .bind(actor.org_id)
+                .fetch_one(&self.0)
+                .await
+                .map_err(err)?;
         let rows = sqlx::query(
             "SELECT * FROM encounters WHERE patient_id=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4",
         )
@@ -515,8 +514,7 @@ impl PgNotes {
     fn map_row(row: &PgRow) -> Result<Note> {
         let status: String = row.try_get("status").map_err(err)?;
         let body: serde_json::Value = row.try_get("body").map_err(err)?;
-        let body: NoteBody =
-            serde_json::from_value(body).map_err(AppError::internal)?;
+        let body: NoteBody = serde_json::from_value(body).map_err(AppError::internal)?;
         Ok(Note {
             id: row.try_get("id").map_err(err)?,
             org_id: row.try_get("org_id").map_err(err)?,
@@ -740,14 +738,13 @@ impl DocumentRepository for PgDocuments {
         limit: i64,
         offset: i64,
     ) -> Result<Page<ClinicalDocument>> {
-        let total: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM documents WHERE patient_id=$1 AND org_id=$2",
-        )
-        .bind(patient_id)
-        .bind(actor.org_id)
-        .fetch_one(&self.0)
-        .await
-        .map_err(err)?;
+        let total: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM documents WHERE patient_id=$1 AND org_id=$2")
+                .bind(patient_id)
+                .bind(actor.org_id)
+                .fetch_one(&self.0)
+                .await
+                .map_err(err)?;
         let rows = sqlx::query(
             "SELECT * FROM documents WHERE patient_id=$1 AND org_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4",
         )
@@ -910,13 +907,7 @@ impl TranscriptionRepository for PgTranscriptions {
         Ok(())
     }
 
-    async fn fail(
-        &self,
-        actor: &Actor,
-        id: Uuid,
-        error: String,
-        now: DateTime<Utc>,
-    ) -> Result<()> {
+    async fn fail(&self, actor: &Actor, id: Uuid, error: String, now: DateTime<Utc>) -> Result<()> {
         let res = sqlx::query(
             "UPDATE transcriptions SET state='failed', error=$2, updated_at=$3 WHERE id=$1 AND org_id=$4",
         )
@@ -1226,7 +1217,8 @@ impl TemplateRepository for PgTemplates {
                     name: r.try_get("name").map_err(err)?,
                     version: r.try_get::<i32, _>("version").map_err(err)? as u32,
                     sections: r.try_get::<Vec<String>, _>("sections").map_err(err)?,
-                    required_sections: r.try_get::<Vec<String>, _>("required_sections")
+                    required_sections: r
+                        .try_get::<Vec<String>, _>("required_sections")
                         .map_err(err)?,
                 })
             })
@@ -1274,7 +1266,13 @@ impl medassist_application::ports::CodingRepository for PgCodes {
             .collect())
     }
 
-    async fn upsert_code(&self, system: &str, version: &str, code: &str, display: &str) -> Result<()> {
+    async fn upsert_code(
+        &self,
+        system: &str,
+        version: &str,
+        code: &str,
+        display: &str,
+    ) -> Result<()> {
         sqlx::query(
             "INSERT INTO codes (system, version, code, display) VALUES ($1,$2,$3,$4)
              ON CONFLICT (system, version, code) DO UPDATE SET display=EXCLUDED.display",
@@ -1337,11 +1335,7 @@ impl PgAudit {
     }
 
     /// Query recent audit events for an organisation (admin endpoint).
-    pub async fn recent(
-        &self,
-        org_id: Uuid,
-        limit: i64,
-    ) -> Result<Vec<serde_json::Value>> {
+    pub async fn recent(&self, org_id: Uuid, limit: i64) -> Result<Vec<serde_json::Value>> {
         let rows = sqlx::query(
             "SELECT time, actor_user_id, action, resource_type, resource_id, outcome, metadata
              FROM audit_events WHERE org_id=$1 ORDER BY time DESC LIMIT $2",

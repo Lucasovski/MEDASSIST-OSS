@@ -100,7 +100,6 @@ impl AuditLister for AuditReader {
         }
         Ok((out, total))
     }
-
 }
 
 pub type AppState = Arc<Inner>;
@@ -144,9 +143,18 @@ pub fn build_state(
 
     Arc::new(Inner {
         patients: PatientService::new(patients_repo.clone(), sink.clone()),
-        encounters: EncounterService::new(encounters_repo.clone(), patients_repo.clone(), sink.clone()),
+        encounters: EncounterService::new(
+            encounters_repo.clone(),
+            patients_repo.clone(),
+            sink.clone(),
+        ),
         notes: NoteService::new(PgNotes(pool.clone()), encounters_repo, sink.clone()),
-        documents: DocumentService::new(docs_repo, blobs.clone() as Arc<dyn BlobStore>, patients_repo, sink.clone()),
+        documents: DocumentService::new(
+            docs_repo,
+            blobs.clone() as Arc<dyn BlobStore>,
+            patients_repo,
+            sink.clone(),
+        ),
         transcriptions: TranscriptionService::new(
             PgTranscriptions(pool.clone()),
             PgConsents(pool.clone()),

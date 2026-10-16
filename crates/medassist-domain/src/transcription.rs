@@ -39,7 +39,10 @@ impl TranscriptSegment {
         }
         if let Some(c) = self.confidence {
             if !(0.0..=1.0).contains(&c) {
-                return Err(DomainError::validation("confidence", "must be within [0,1]"));
+                return Err(DomainError::validation(
+                    "confidence",
+                    "must be within [0,1]",
+                ));
             }
         }
         Ok(())
@@ -69,7 +72,11 @@ pub struct Transcription {
 impl Transcription {
     /// Concatenated full text (segments joined by space).
     pub fn full_text(&self) -> String {
-        self.segments.iter().map(|s| s.text.trim()).collect::<Vec<_>>().join(" ")
+        self.segments
+            .iter()
+            .map(|s| s.text.trim())
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     pub fn validate(&self) -> Result<(), DomainError> {
@@ -109,7 +116,13 @@ mod tests {
     use super::*;
 
     fn seg(start_ms: u64, end_ms: u64, text: &str) -> TranscriptSegment {
-        TranscriptSegment { start_ms, end_ms, text: text.into(), confidence: Some(0.9), speaker: None }
+        TranscriptSegment {
+            start_ms,
+            end_ms,
+            text: text.into(),
+            confidence: Some(0.9),
+            speaker: None,
+        }
     }
 
     #[test]
@@ -139,7 +152,10 @@ mod tests {
             revoked_at: None,
         };
         assert!(c.is_valid_at(now));
-        let revoked = RecordingConsent { revoked_at: Some(now - chrono::Duration::hours(1)), ..c.clone() };
+        let revoked = RecordingConsent {
+            revoked_at: Some(now - chrono::Duration::hours(1)),
+            ..c.clone()
+        };
         assert!(!revoked.is_valid_at(now));
     }
 
@@ -154,7 +170,10 @@ mod tests {
             engine: "test-double".into(),
             engine_version: None,
             language: Some("pt-BR".into()),
-            segments: vec![seg(0, 1000, "bom dia"), seg(1000, 2000, "como o senhor está?")],
+            segments: vec![
+                seg(0, 1000, "bom dia"),
+                seg(1000, 2000, "como o senhor está?"),
+            ],
             reviewed: false,
             consent_id: Uuid::new_v4(),
             audio_retention_policy: "delete_after_note_finalisation".into(),
