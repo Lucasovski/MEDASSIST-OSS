@@ -272,7 +272,7 @@ mod tests {
     }
 
     fn soap(a: Uuid) -> NoteBody {
-        NoteBody::Soap(medassist_domain::note::SoapContent {
+        NoteBody::Soap(Box::new(medassist_domain::note::SoapContent {
             subjective: Some(SoapSection::professional(a, "queixa")),
             objective: Some(SoapSection::professional(a, "achados")),
             assessment: Some(SoapSection::professional(a, "avaliação")),

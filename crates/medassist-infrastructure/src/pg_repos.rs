@@ -77,7 +77,7 @@ fn enc_status_from(s: &str) -> Result<EncounterStatus> {
         "closed" => EncounterStatus::Closed,
         "finalised" => EncounterStatus::Finalised,
         "cancelled" => EncounterStatus::Cancelled,
-        other => {
+        _other => {
             return Err(AppError::internal(InternalMsg("unknown encounter status")))
         }
     })
@@ -120,7 +120,7 @@ fn proc_state_from(s: &str) -> Result<ProcessingState> {
         "extracted" => ProcessingState::Extracted,
         "failed" => ProcessingState::Failed,
         "reviewed" => ProcessingState::Reviewed,
-        other => return Err(AppError::internal(InternalMsg("bad document state"))),
+        _other => return Err(AppError::internal(InternalMsg("bad document state"))),
     })
 }
 
@@ -141,7 +141,7 @@ fn job_state_from(s: &str) -> Result<JobState> {
         "completed" => JobState::Completed,
         "failed" => JobState::Failed,
         "cancelled" => JobState::Cancelled,
-        other => return Err(AppError::internal(InternalMsg("bad job state"))),
+        _other => return Err(AppError::internal(InternalMsg("bad job state"))),
     })
 }
 
@@ -158,7 +158,7 @@ fn job_kind_from(s: &str) -> Result<JobKind> {
         "transcription" => JobKind::Transcription,
         "document_extraction" => JobKind::DocumentExtraction,
         "ai_documentation_draft" => JobKind::AiDocumentationDraft,
-        other => return Err(AppError::internal(InternalMsg("bad job kind"))),
+        _other => return Err(AppError::internal(InternalMsg("bad job kind"))),
     })
 }
 
@@ -179,7 +179,7 @@ fn tx_state_from(s: &str) -> Result<TranscriptionState> {
         "completed" => TranscriptionState::Completed,
         "failed" => TranscriptionState::Failed,
         "cancelled" => TranscriptionState::Cancelled,
-        other => return Err(AppError::internal(InternalMsg("bad transcription state"))),
+        _other => return Err(AppError::internal(InternalMsg("bad transcription state"))),
     })
 }
 
@@ -201,7 +201,7 @@ impl PgPatients {
             family_name: row.try_get("family_name").map_err(err)?,
             given_name: row.try_get("given_name").map_err(err)?,
             birth_date: row.try_get("birth_date").map_err(err)?,
-            sex: sex_from_str(row.try_get::<Option<&str>, _>("sex").map_err(err)?.as_deref()),
+            sex: sex_from_str(row.try_get::<Option<&str>, _>("sex").map_err(err)?),
             contact: row.try_get("contact").map_err(err)?,
             external_ids: ids,
             notes: row.try_get("notes").map_err(err)?,
@@ -219,7 +219,7 @@ fn err(e: sqlx::Error) -> AppError {
 #[async_trait]
 impl PatientRepository for PgPatients {
     async fn insert(&self, p: &Patient) -> Result<()> {
-        let ids = serde_json::to_value(&p.external_ids).map_err(|e| AppError::internal(e))?;
+        let ids = serde_json::to_value(&p.external_ids).map_err(AppError::internal)?;
         sqlx::query(
             "INSERT INTO patients (id, org_id, family_name, given_name, birth_date, sex, contact, external_ids, notes, created_at, updated_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
@@ -307,7 +307,7 @@ impl PatientRepository for PgPatients {
     }
 
     async fn update(&self, p: &Patient) -> Result<()> {
-        let ids = serde_json::to_value(&p.external_ids).map_err(|e| AppError::internal(e))?;
+        let ids = serde_json::to_value(&p.external_ids).map_err(AppError::internal)?;
         let res = sqlx::query(
             "UPDATE patients SET family_name=$2, given_name=$3, birth_date=$4, sex=$5, contact=$6, external_ids=$7, notes=$8, updated_at=$9
              WHERE id=$1 AND org_id=$10 AND deleted_at IS NULL",
@@ -516,7 +516,7 @@ impl PgNotes {
         let status: String = row.try_get("status").map_err(err)?;
         let body: serde_json::Value = row.try_get("body").map_err(err)?;
         let body: NoteBody =
-            serde_json::from_value(body).map_err(|e| AppError::internal(e))?;
+            serde_json::from_value(body).map_err(AppError::internal)?;
         Ok(Note {
             id: row.try_get("id").map_err(err)?,
             org_id: row.try_get("org_id").map_err(err)?,
@@ -540,7 +540,7 @@ impl PgNotes {
 #[async_trait]
 impl NoteRepository for PgNotes {
     async fn insert(&self, n: &Note) -> Result<()> {
-        let body = serde_json::to_value(&n.body).map_err(|e| AppError::internal(e))?;
+        let body = serde_json::to_value(&n.body).map_err(AppError::internal)?;
         sqlx::query(
             "INSERT INTO notes (id, org_id, encounter_id, patient_id, author_id, template_id, status, version, body, created_at, updated_at, finalised_at, finalised_by, amends_note_id)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
@@ -593,7 +593,7 @@ impl NoteRepository for PgNotes {
         expected_version: u32,
         _edited_by: Uuid,
     ) -> Result<()> {
-        let body = serde_json::to_value(&n.body).map_err(|e| AppError::internal(e))?;
+        let body = serde_json::to_value(&n.body).map_err(AppError::internal)?;
         let res = sqlx::query(
             "UPDATE notes SET status=$2, version=$3, body=$4, updated_at=$5, finalised_at=$6, finalised_by=$7
              WHERE id=$1 AND org_id=$8 AND version=$9",
@@ -630,7 +630,7 @@ impl NoteRepository for PgNotes {
     }
 
     async fn append_version_snapshot(&self, n: &Note, edited_by: Uuid) -> Result<()> {
-        let body = serde_json::to_value(&n.body).map_err(|e| AppError::internal(e))?;
+        let body = serde_json::to_value(&n.body).map_err(AppError::internal)?;
         sqlx::query(
             "INSERT INTO note_versions (note_id, version, body, edited_by) VALUES ($1,$2,$3,$4) ON CONFLICT (note_id, version) DO NOTHING",
         )
@@ -824,7 +824,7 @@ impl PgTranscriptions {
         let state: String = row.try_get("state").map_err(err)?;
         let segs: serde_json::Value = row.try_get("segments").map_err(err)?;
         let segments: Vec<TranscriptSegment> =
-            serde_json::from_value(segs).map_err(|e| AppError::internal(e))?;
+            serde_json::from_value(segs).map_err(AppError::internal)?;
         Ok(Transcription {
             id: row.try_get("id").map_err(err)?,
             org_id: row.try_get("org_id").map_err(err)?,
@@ -847,7 +847,7 @@ impl PgTranscriptions {
 #[async_trait]
 impl TranscriptionRepository for PgTranscriptions {
     async fn insert(&self, t: &Transcription) -> Result<()> {
-        let segs = serde_json::to_value(&t.segments).map_err(|e| AppError::internal(e))?;
+        let segs = serde_json::to_value(&t.segments).map_err(AppError::internal)?;
         sqlx::query(
             "INSERT INTO transcriptions (id, org_id, patient_id, encounter_id, state, engine, engine_version, language, segments, reviewed, consent_id, audio_retention_policy, created_at, updated_at)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
@@ -891,7 +891,7 @@ impl TranscriptionRepository for PgTranscriptions {
         engine_version: Option<String>,
         now: DateTime<Utc>,
     ) -> Result<()> {
-        let segs = serde_json::to_value(&segments).map_err(|e| AppError::internal(e))?;
+        let segs = serde_json::to_value(&segments).map_err(AppError::internal)?;
         let res = sqlx::query(
             "UPDATE transcriptions SET state='completed', segments=$2, engine=$3, engine_version=$4, updated_at=$5 WHERE id=$1 AND org_id=$6",
         )
