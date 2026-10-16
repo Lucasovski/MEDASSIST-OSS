@@ -1,8 +1,8 @@
 # MedAssist OSS - Implementation Status
 
 **Last Updated:** 2026-10-16  
-**Branch:** main  
-**Commit:** 50bcc99 (HEAD detached at FETCH_HEAD)
+**Branch:** vibe/fix-compilation-and-clippy-228feb  
+**Commit:** 4556e36 (HEAD at vibe/fix-compilation-and-clippy-228feb)
 
 ---
 
@@ -67,6 +67,14 @@ This document tracks the current implementation status of MedAssist OSS, includi
 - [x] **Error Handling**: Typed `ApiError` envelope
 - [x] **Tracing**: Request tracing middleware
 - [x] **State Management**: Application state wiring
+- [x] **Auth**: Login, logout, session management endpoints
+- [x] **Patient CRUD**: GET /patients, POST /patients, GET /patients/:id, PATCH /patients/:id, DELETE /patients/:id
+- [x] **Encounter CRUD**: GET /patients/:id/encounters, POST /patients/:id/encounters
+- [x] **Note CRUD**: Full lifecycle endpoints with versions, review, finalize, amend
+- [x] **Document CRUD**: Upload, download, review endpoints
+- [x] **Transcription**: Consent, start, cancel, review, draft-body endpoints
+- [x] **AI**: Documentation draft generation endpoint
+- [x] **System**: Capabilities, audit, templates, coding search endpoints
 
 ### Governance & Documentation
 - [x] **LICENSE**: GNU GPL v3.0 or later
