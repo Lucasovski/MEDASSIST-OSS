@@ -1,0 +1,3 @@
+target/
+.env
+nohup.out
