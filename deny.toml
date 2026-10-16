@@ -1,0 +1,36 @@
+[graph]
+targets = [
+    { path = "crates/medassist-domain", kind = "lib" },
+    { path = "crates/medassist-application", kind = "lib" },
+    { path = "crates/medassist-infrastructure", kind = "lib" },
+    { path = "crates/medassist-api", kind = "lib" },
+    { path = "crates/medassist-cli", kind = "bin" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Unicode-DFS-2016",
+    "OpenSSL",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+db-fetch = false   # set true in networked CI; offline here on purpose
+yanked = "deny"

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt-check-clippy-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: medassist
+          POSTGRES_PASSWORD: ci-not-a-secret
+          POSTGRES_DB: medassist_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U medassist"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Workspace check (all targets)
+        run: cargo check --workspace --all-targets
+
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Unit tests (no DB required)
+        run: cargo test --workspace --lib
+
+      - name: Apply migrations + integration tests (real PostgreSQL)
+        env:
+          DATABASE_URL: postgres://medassist:ci-not-a-secret@localhost:5432/medassist_test
+        run: |
+          cargo install sqlx-cli --no-default-features --features postgres --locked
+          sqlx database setup
+          cargo test --workspace -- --include-ignored
+
+  license-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources advisories

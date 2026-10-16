@@ -1,3 +1,7 @@
 target/
 .env
 nohup.out
+/var/
+*.log
+medassist-oss.zip
+medassist-oss-export/
