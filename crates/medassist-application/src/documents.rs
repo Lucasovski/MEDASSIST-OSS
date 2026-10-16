@@ -7,8 +7,6 @@ use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
 use medassist_domain::document::{ClinicalDocument, ProcessingState};
-use medassist_domain::DomainError;
-
 use crate::errors::{AppError, Actor};
 use crate::ports::{AuditEvent, AuditOutcome, AuditSink, BlobStore, DocumentRepository, PatientRepository};
 
@@ -56,8 +54,7 @@ impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> Do
         hasher.update(&bytes);
         let sha256 = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
 
-        let kind = ClinicalDocument::validate_new(&filename, &content_type, bytes.len() as u64, &sha256)
-            .map_err(DomainError::from)?;
+        let kind = ClinicalDocument::validate_new(&filename, &content_type, bytes.len() as u64, &sha256)?;
 
         let id = Uuid::new_v4();
         let doc = ClinicalDocument {

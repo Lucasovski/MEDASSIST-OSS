@@ -113,7 +113,7 @@ impl ClinicalDocumentationEngine for DoubleEngine {
                 reviewed: false,
             })
         };
-        Ok(NoteBody::Soap(SoapContent {
+        Ok(NoteBody::Soap(Box::new(SoapContent {
             subjective: mk(d.subjective),
             objective: mk(d.objective),
             assessment: mk(d.assessment),

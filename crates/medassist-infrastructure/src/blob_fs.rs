@@ -40,7 +40,7 @@ impl BlobStore for FsBlobStore {
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| AppError::internal(e))?;
+                .map_err(AppError::internal)?;
         }
         // create_new fails if the blob already exists — originals are immutable.
         let mut opts = tokio::fs::OpenOptions::new();
@@ -52,9 +52,8 @@ impl BlobStore for FsBlobStore {
                 AppError::internal(e)
             }
         })?;
-        use std::io::Write;
-        f.write_all(bytes).await.map_err(|e| AppError::internal(e))?;
-        f.flush().await.map_err(|e| AppError::internal(e))?;
+        f.write_all(bytes).await.map_err(AppError::internal)?;
+        f.flush().await.map_err(AppError::internal)?;
         Ok(key)
     }
 

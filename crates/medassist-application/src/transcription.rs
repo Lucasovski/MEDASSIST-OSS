@@ -152,7 +152,7 @@ impl<T: TranscriptionRepository, C: ConsentRepository, A: AuditSink> Transcripti
         if text.trim().is_empty() {
             return Err(AppError::Unprocessable("empty transcription".into()));
         }
-        Ok(NoteBody::Soap(SoapContent {
+        Ok(NoteBody::Soap(Box::new(SoapContent {
             subjective: Some(SoapSection {
                 text,
                 provenance: Provenance::new(
