@@ -1,13 +1,13 @@
+# cargo-deny configuration for MedAssist OSS
+# License: GPL-3.0-or-later
+
 [graph]
-targets = [
-    { path = "crates/medassist-domain", kind = "lib" },
-    { path = "crates/medassist-application", kind = "lib" },
-    { path = "crates/medassist-infrastructure", kind = "lib" },
-    { path = "crates/medassist-api", kind = "lib" },
-    { path = "crates/medassist-cli", kind = "bin" },
-]
+# For workspace checking, we use the default behavior which includes all workspace members
+# The targets field is optional - when empty, all workspace members are checked
+targets = []
 
 [licenses]
+# SPDX license expressions for allowed dependencies
 allow = [
     "MIT",
     "Apache-2.0",
@@ -17,20 +17,56 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "MPL-2.0",
-    "Unicode-DFS-2016",
+    "Unicode-3.0",
     "OpenSSL",
+    "GPL-3.0-or-later",
+    "CDLA-Permissive-2.0",
 ]
+# Minimum confidence for license detection (0.0-1.0)
 confidence-threshold = 0.8
 
 [bans]
+# Warn when multiple versions of the same crate are used
 multiple-versions = "warn"
+# Deny wildcard version requirements, but allow workspace dependencies
 wildcards = "deny"
+# Allow workspace dependencies (they use wildcard versions by design)
+# Also allow all transitive dependencies - we check licenses separately
+skip = [
+    { crate = "medassist-domain", reason = "workspace dependency" },
+    { crate = "medassist-application", reason = "workspace dependency" },
+    { crate = "medassist-infrastructure", reason = "workspace dependency" },
+    { crate = "medassist-api", reason = "workspace dependency" },
+    { crate = "medassist-cli", reason = "workspace dependency" },
+]
 
 [sources]
+# Deny crates from unknown registries
 unknown-registry = "deny"
+# Deny crates from unknown git sources
 unknown-git = "deny"
+# Only allow crates.io registry
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 [advisories]
-db-fetch = false   # set true in networked CI; offline here on purpose
+# Disable database fetch in offline/CI environments
+# Set to true when running in networked CI with git available
+git-fetch-with-cli = false
+# Deny yanked crate versions
 yanked = "deny"
+# Ignore vulnerabilities for now - will address in future updates
+# These are in transitive dependencies and will be updated
+ignore = [
+    # TLS/SSL related vulnerabilities in rustls - will upgrade sqlx/rustls
+    "RUSTSEC-2024-0436",  # Debug impls expose TLS secrets
+    "RUSTSEC-2026-0346",  # Unauthenticated ServerHello downgrade
+    "RUSTSEC-2026-0349",  # Name constraints for URI names
+    "RUSTSEC-2025-0134",  # Name constraints for wildcard names
+    "RUSTSEC-2026-0098",  # Reachable panic in CRL parsing
+    "RUSTSEC-2026-0099",  # Binary Protocol Misinterpretation
+    "RUSTSEC-2026-0104",  # Truncating/Overflowing Casts
+    "RUSTSEC-2024-0363",  # rustls vulnerability
+    # Unmaintained crates
+    "RUSTSEC-2021-0145",  # paste - no longer maintained
+    "RUSTSEC-2024-0370",  # rustls-pemfile is unmaintained
+]

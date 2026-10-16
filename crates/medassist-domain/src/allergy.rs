@@ -44,16 +44,24 @@ pub struct Allergy {
 impl Allergy {
     pub fn validate(&self) -> Result<(), DomainError> {
         if self.substance.trim().is_empty() {
-            return Err(DomainError::validation("substance", "allergy substance must not be empty"));
+            return Err(DomainError::validation(
+                "substance",
+                "allergy substance must not be empty",
+            ));
         }
         if self.substance.chars().count() > 200 {
-            return Err(DomainError::validation("substance", "allergy substance too long"));
+            return Err(DomainError::validation(
+                "substance",
+                "allergy substance too long",
+            ));
         }
         // A confirmed allergy must come from a confirmed source.
         if self.confirmation == AllergyConfirmation::Confirmed
             && !self.provenance.kind.is_confirmed_fact()
         {
-            return Err(DomainError::ProvenanceRequired(self.provenance.kind.as_str().to_owned()));
+            return Err(DomainError::ProvenanceRequired(
+                self.provenance.kind.as_str().to_owned(),
+            ));
         }
         Ok(())
     }
@@ -73,28 +81,45 @@ mod tests {
             reaction: Some("urticária".into()),
             severity: AllergySeverity::Moderate,
             confirmation: conf,
-            provenance: Provenance::new(kind, SourceRef::Practitioner { user_id: Uuid::new_v4() }),
+            provenance: Provenance::new(
+                kind,
+                SourceRef::Practitioner {
+                    user_id: Uuid::new_v4(),
+                },
+            ),
             created_at: Utc::now(),
         }
     }
 
     #[test]
     fn unverified_ai_reported_allergy_is_allowed_but_flagged() {
-        let x = a(AllergyConfirmation::Unverified, ProvenanceKind::Transcription);
+        let x = a(
+            AllergyConfirmation::Unverified,
+            ProvenanceKind::Transcription,
+        );
         x.validate().unwrap();
     }
 
     #[test]
     fn confirmed_allergy_needs_professional_provenance() {
         let x = a(AllergyConfirmation::Confirmed, ProvenanceKind::AiSuggestion);
-        assert!(matches!(x.validate(), Err(DomainError::ProvenanceRequired(_))));
-        let y = a(AllergyConfirmation::Confirmed, ProvenanceKind::ProfessionalEntry);
+        assert!(matches!(
+            x.validate(),
+            Err(DomainError::ProvenanceRequired(_))
+        ));
+        let y = a(
+            AllergyConfirmation::Confirmed,
+            ProvenanceKind::ProfessionalEntry,
+        );
         y.validate().unwrap();
     }
 
     #[test]
     fn empty_substance_rejected() {
-        let mut x = a(AllergyConfirmation::Unverified, ProvenanceKind::PatientReport);
+        let mut x = a(
+            AllergyConfirmation::Unverified,
+            ProvenanceKind::PatientReport,
+        );
         x.substance = " ".into();
         assert!(x.validate().is_err());
     }

@@ -128,20 +128,27 @@ pub fn validate_draft(
         ("plan", &draft.plan),
     ];
 
-    for (name, content) in sections.iter().filter(|(_, c)| c.as_deref().map(|x| !x.trim().is_empty()).unwrap_or(false)) {
+    for (name, content) in sections
+        .iter()
+        .filter(|(_, c)| c.as_deref().map(|x| !x.trim().is_empty()).unwrap_or(false))
+    {
         let text = content.as_ref().unwrap();
         // Every numeric token generated must have been grounded in the input.
         for n in numbers_in(text) {
             let nd = digits_only(&n);
             if !nd.is_empty() && !haystack_digits.contains(&nd) {
-                violations.push(format!("{name}: fabricated quantity '{n}' not present in authorised input"));
+                violations.push(format!(
+                    "{name}: fabricated quantity '{n}' not present in authorised input"
+                ));
             }
         }
         // ISO-like or dd/mm/yyyy date shapes must also be grounded.
         for tok in extract_date_like(text) {
             let td = digits_only(&tok);
             if !haystack_digits.contains(&td) {
-                violations.push(format!("{name}: fabricated date '{tok}' not present in authorised input"));
+                violations.push(format!(
+                    "{name}: fabricated date '{tok}' not present in authorised input"
+                ));
             }
         }
     }
@@ -150,7 +157,10 @@ pub fn validate_draft(
         return Err(violations);
     }
 
-    let job_src = SourceRef::AiJob { id: req.job_id, model: draft.model.clone() };
+    let job_src = SourceRef::AiJob {
+        id: req.job_id,
+        model: draft.model.clone(),
+    };
     let mk = |t: Option<String>| -> Option<SoapSection> {
         t.filter(|x| !x.trim().is_empty()).map(|text| SoapSection {
             text,
@@ -164,13 +174,15 @@ pub fn validate_draft(
         objective: mk(draft.objective.clone()),
         assessment: mk(draft.assessment.clone()),
         plan: mk(draft.plan.clone()),
-    }))
+    })))
 }
 
 fn extract_date_like(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     for word in text.split_whitespace() {
-        let w: String = word.trim_matches(|c: char| !c.is_ascii_digit() && c != '/' && c != '-').into();
+        let w: String = word
+            .trim_matches(|c: char| !c.is_ascii_digit() && c != '/' && c != '-')
+            .into();
         let has_digits = w.chars().any(|c| c.is_ascii_digit());
         let sep = (w.contains('/') || w.contains('-')) && has_digits;
         // crude shape check: contains at least two separators groups
@@ -191,7 +203,12 @@ mod tests {
             org_id: Uuid::new_v4(),
             patient_id: Uuid::new_v4(),
             encounter_id: Uuid::new_v4(),
-            sections: vec!["subjective".into(), "objective".into(), "assessment".into(), "plan".into()],
+            sections: vec![
+                "subjective".into(),
+                "objective".into(),
+                "assessment".into(),
+                "plan".into(),
+            ],
             transcript: Some("paciente com cefaleia ha 3 dias. pa 130x85 mmhg".into()),
             authorised_context: vec!["queixa: dor de cabeça".into()],
         }
@@ -210,7 +227,10 @@ mod tests {
         let body = validate_draft(&d, &req()).expect("should pass");
         match body {
             NoteBody::Soap(s) => {
-                assert_eq!(s.plan.as_ref().unwrap().provenance.kind, ProvenanceKind::AiSuggestion);
+                assert_eq!(
+                    s.plan.as_ref().unwrap().provenance.kind,
+                    ProvenanceKind::AiSuggestion
+                );
                 assert!(!s.plan.as_ref().unwrap().reviewed);
                 assert!(!s.unreviewed_sections().is_empty());
             }

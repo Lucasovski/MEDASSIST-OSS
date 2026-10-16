@@ -4,7 +4,7 @@
 
 use medassist_domain::note::SoapContent;
 
-use crate::errors::{AppError, Actor};
+use crate::errors::{Actor, AppError};
 use crate::ports::{NoteTemplate, TemplateRepository};
 
 pub const BUILTIN_SOAP_ID: &str = "00000000-0000-4000-8000-000000000001";
@@ -54,12 +54,20 @@ impl<R: TemplateRepository> TemplateService<R> {
 
     /// Which required sections are still missing from a draft body — used by
     /// the editor to show gaps without inventing content.
-    pub fn missing_required(template: &NoteTemplate, body: &medassist_domain::note::NoteBody) -> Vec<String> {
+    pub fn missing_required(
+        template: &NoteTemplate,
+        body: &medassist_domain::note::NoteBody,
+    ) -> Vec<String> {
         let present = match body {
             medassist_domain::note::NoteBody::Soap(s) => present_soap_sections(s),
             medassist_domain::note::NoteBody::FreeText { .. } => vec!["text"],
         };
-        template.required_sections.iter().filter(|r| !present.contains(&r.as_str())).cloned().collect()
+        template
+            .required_sections
+            .iter()
+            .filter(|r| !present.contains(&r.as_str()))
+            .cloned()
+            .collect()
     }
 }
 
@@ -68,6 +76,10 @@ pub fn present_soap_sections(s: &SoapContent) -> Vec<&'static str> {
     SoapSections::ALL
         .iter()
         .zip([&s.subjective, &s.objective, &s.assessment, &s.plan])
-        .filter_map(|(n, slot)| slot.as_ref().filter(|x| !x.text.trim().is_empty()).map(|_| *n))
+        .filter_map(|(n, slot)| {
+            slot.as_ref()
+                .filter(|x| !x.text.trim().is_empty())
+                .map(|_| *n)
+        })
         .collect()
 }

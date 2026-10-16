@@ -10,8 +10,11 @@ use chrono::{DateTime, Duration};
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid as Guid;
 
-use crate::errors::{AppError, Actor};
-use crate::ports::{AuditEvent, AuditOutcome, AuditSink, NewUserRecord, SessionRecord, SessionRepository, UserRepository};
+use crate::errors::{Actor, AppError};
+use crate::ports::{
+    AuditEvent, AuditOutcome, AuditSink, NewUserRecord, SessionRecord, SessionRepository,
+    UserRepository,
+};
 
 pub const MAX_FAILED_LOGINS: i32 = 5;
 pub const LOCKOUT_MINUTES: i64 = 15;
@@ -34,7 +37,9 @@ pub fn hash_password(password: &str) -> Result<String, AppError> {
 
 pub fn verify_password(password: &str, hash: &str) -> bool {
     match PasswordHash::new(hash) {
-        Ok(parsed) => argon2id().verify_password(password.as_bytes(), &parsed).is_ok(),
+        Ok(parsed) => argon2id()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok(),
         Err(_) => false,
     }
 }
@@ -84,7 +89,11 @@ pub struct AuthService<U: UserRepository, S: SessionRepository, A: AuditSink> {
 
 impl<U: UserRepository, S: SessionRepository, A: AuditSink> AuthService<U, S, A> {
     pub fn new(users: U, sessions: S, audit: A) -> Self {
-        Self { users, sessions, audit }
+        Self {
+            users,
+            sessions,
+            audit,
+        }
     }
 
     pub async fn register_first_admin(
@@ -100,7 +109,12 @@ impl<U: UserRepository, S: SessionRepository, A: AuditSink> AuthService<U, S, A>
         }
         let hash = hash_password(password)?;
         self.users
-            .insert(&NewUserRecord { org_id, email, password_hash: hash, roles: vec!["admin".into(), "practitioner".into()] })
+            .insert(&NewUserRecord {
+                org_id,
+                email,
+                password_hash: hash,
+                roles: vec!["admin".into(), "practitioner".into()],
+            })
             .await
     }
 
@@ -124,7 +138,8 @@ impl<U: UserRepository, S: SessionRepository, A: AuditSink> AuthService<U, S, A>
 
         if let Some(until) = user.locked_until {
             if until > now {
-                self.audit(Some(user.id), "auth.login.locked", AuditOutcome::Denied).await;
+                self.audit(Some(user.id), "auth.login.locked", AuditOutcome::Denied)
+                    .await;
                 return Err(AppError::Unauthenticated);
             }
         }
@@ -133,10 +148,22 @@ impl<U: UserRepository, S: SessionRepository, A: AuditSink> AuthService<U, S, A>
             self.users.register_login_failure(user.id).await?;
             let fails = user.failed_logins + 1;
             if fails >= MAX_FAILED_LOGINS {
-                self.users.lock_until(user.id, now + Duration::minutes(LOCKOUT_MINUTES)).await?;
-                self.audit(Some(user.id), "auth.login.lockout_triggered", AuditOutcome::Failure).await;
+                self.users
+                    .lock_until(user.id, now + Duration::minutes(LOCKOUT_MINUTES))
+                    .await?;
+                self.audit(
+                    Some(user.id),
+                    "auth.login.lockout_triggered",
+                    AuditOutcome::Failure,
+                )
+                .await;
             }
-            self.audit(Some(user.id), "auth.login.bad_password", AuditOutcome::Denied).await;
+            self.audit(
+                Some(user.id),
+                "auth.login.bad_password",
+                AuditOutcome::Denied,
+            )
+            .await;
             return Err(AppError::Unauthenticated);
         }
 
@@ -151,16 +178,30 @@ impl<U: UserRepository, S: SessionRepository, A: AuditSink> AuthService<U, S, A>
             revoked_at: None,
         };
         self.sessions.insert(&session).await?;
-        self.audit(Some(user.id), "auth.login", AuditOutcome::Success).await;
-        Ok((token, Actor { user_id: user.id, org_id: user.org_id, roles: user.roles }))
+        self.audit(Some(user.id), "auth.login", AuditOutcome::Success)
+            .await;
+        Ok((
+            token,
+            Actor {
+                user_id: user.id,
+                org_id: user.org_id,
+                roles: user.roles,
+            },
+        ))
     }
 
-    pub async fn resolve_session(&self, token: &str, now: DateTime<chrono::Utc>) -> Result<Actor, AppError> {
+    pub async fn resolve_session(
+        &self,
+        token: &str,
+        now: DateTime<chrono::Utc>,
+    ) -> Result<Actor, AppError> {
         let hash = hash_token(token);
         match self.sessions.find_by_token_hash(&hash).await? {
-            Some(s) if s.revoked_at.is_none() && s.expires_at > now => {
-                Ok(Actor { user_id: s.user_id, org_id: s.org_id, roles: s.roles })
-            }
+            Some(s) if s.revoked_at.is_none() && s.expires_at > now => Ok(Actor {
+                user_id: s.user_id,
+                org_id: s.org_id,
+                roles: s.roles,
+            }),
             _ => Err(AppError::Unauthenticated),
         }
     }
@@ -208,7 +249,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl UserRepository for MemUsers {
-        async fn find_by_email(&self, email: &str) -> Result<Option<crate::ports::UserRecord>, AppError> {
+        async fn find_by_email(
+            &self,
+            email: &str,
+        ) -> Result<Option<crate::ports::UserRecord>, AppError> {
             Ok(self.by_email.lock().unwrap().get(email).cloned())
         }
         async fn insert(&self, u: &NewUserRecord) -> Result<Guid, AppError> {
@@ -230,7 +274,11 @@ mod tests {
         async fn update_password_hash(&self, _id: Guid, _hash: String) -> Result<(), AppError> {
             Ok(())
         }
-        async fn register_login_success(&self, _id: Guid, _now: DateTime<chrono::Utc>) -> Result<(), AppError> {
+        async fn register_login_success(
+            &self,
+            _id: Guid,
+            _now: DateTime<chrono::Utc>,
+        ) -> Result<(), AppError> {
             Ok(())
         }
         async fn register_login_failure(&self, id: Guid) -> Result<(), AppError> {
@@ -255,7 +303,10 @@ mod tests {
     #[async_trait::async_trait]
     impl SessionRepository for MemSessions {
         async fn insert(&self, s: &SessionRecord) -> Result<(), AppError> {
-            self.0.lock().unwrap().insert(s.token_hash.clone(), s.clone());
+            self.0
+                .lock()
+                .unwrap()
+                .insert(s.token_hash.clone(), s.clone());
             Ok(())
         }
         async fn find_by_token_hash(&self, h: &str) -> Result<Option<SessionRecord>, AppError> {
@@ -267,7 +318,11 @@ mod tests {
             }
             Ok(())
         }
-        async fn revoke_all_for_user(&self, _u: Guid, _now: DateTime<chrono::Utc>) -> Result<(), AppError> {
+        async fn revoke_all_for_user(
+            &self,
+            _u: Guid,
+            _now: DateTime<chrono::Utc>,
+        ) -> Result<(), AppError> {
             Ok(())
         }
     }
@@ -282,7 +337,11 @@ mod tests {
     }
 
     fn svc() -> AuthService<MemUsers, MemSessions, MemAudit> {
-        AuthService::new(MemUsers::default(), MemSessions::default(), MemAudit::default())
+        AuthService::new(
+            MemUsers::default(),
+            MemSessions::default(),
+            MemAudit::default(),
+        )
     }
 
     #[test]
@@ -301,7 +360,10 @@ mod tests {
 
     #[test]
     fn email_normalisation_and_validation() {
-        assert_eq!(normalise_email("  Ana.Silva@Example.COM ").unwrap(), "ana.silva@example.com");
+        assert_eq!(
+            normalise_email("  Ana.Silva@Example.COM ").unwrap(),
+            "ana.silva@example.com"
+        );
         assert!(normalise_email("not-an-email").is_err());
         assert!(normalise_email("a@b").is_err());
     }
@@ -310,38 +372,64 @@ mod tests {
     async fn login_creates_resolvable_session_and_logout_revokes_it() {
         let s = svc();
         let org = Guid::new_v4();
-        s.register_first_admin(org, "admin@clinic.test", "sup3r-s3cret-pw").await.unwrap();
-        let (token, actor) = s.login("ADMIN@clinic.test", "sup3r-s3cret-pw", chrono::Utc::now()).await.unwrap();
+        s.register_first_admin(org, "admin@clinic.test", "sup3r-s3cret-pw")
+            .await
+            .unwrap();
+        let (token, actor) = s
+            .login("ADMIN@clinic.test", "sup3r-s3cret-pw", chrono::Utc::now())
+            .await
+            .unwrap();
         assert_eq!(actor.org_id, org);
         let resolved = s.resolve_session(&token, chrono::Utc::now()).await.unwrap();
         assert_eq!(resolved.user_id, actor.user_id);
         s.logout(&token, chrono::Utc::now()).await.unwrap();
-        assert!(matches!(s.resolve_session(&token, chrono::Utc::now()).await, Err(AppError::Unauthenticated)));
+        assert!(matches!(
+            s.resolve_session(&token, chrono::Utc::now()).await,
+            Err(AppError::Unauthenticated)
+        ));
     }
 
     #[tokio::test]
     async fn lockout_after_max_failures() {
         let s = svc();
         let org = Guid::new_v4();
-        s.register_first_admin(org, "u@clinic.test", "good-password-1").await.unwrap();
+        s.register_first_admin(org, "u@clinic.test", "good-password-1")
+            .await
+            .unwrap();
         for _ in 0..MAX_FAILED_LOGINS {
-            assert!(s.login("u@clinic.test", "bad-password-x", chrono::Utc::now()).await.is_err());
+            assert!(s
+                .login("u@clinic.test", "bad-password-x", chrono::Utc::now())
+                .await
+                .is_err());
         }
         // Even the correct password is refused while locked.
         let later = chrono::Utc::now() + Duration::seconds(1);
-        let err = s.login("u@clinic.test", "good-password-1", later).await.unwrap_err();
+        let err = s
+            .login("u@clinic.test", "good-password-1", later)
+            .await
+            .unwrap_err();
         assert!(matches!(err, AppError::Unauthenticated));
         let events = s.audit.0.lock().unwrap();
-        assert!(events.iter().any(|e| e.action == "auth.login.lockout_triggered"));
+        assert!(events
+            .iter()
+            .any(|e| e.action == "auth.login.lockout_triggered"));
     }
 
     #[tokio::test]
     async fn expired_session_is_rejected() {
         let s = svc();
         let org = Guid::new_v4();
-        s.register_first_admin(org, "e@clinic.test", "another-good-pw").await.unwrap();
-        let (token, _) = s.login("e@clinic.test", "another-good-pw", chrono::Utc::now()).await.unwrap();
+        s.register_first_admin(org, "e@clinic.test", "another-good-pw")
+            .await
+            .unwrap();
+        let (token, _) = s
+            .login("e@clinic.test", "another-good-pw", chrono::Utc::now())
+            .await
+            .unwrap();
         let far_future = chrono::Utc::now() + Duration::days(SESSION_TTL_DAYS + 1);
-        assert!(matches!(s.resolve_session(&token, far_future).await, Err(AppError::Unauthenticated)));
+        assert!(matches!(
+            s.resolve_session(&token, far_future).await,
+            Err(AppError::Unauthenticated)
+        ));
     }
 }

@@ -6,20 +6,30 @@ use chrono::Utc;
 use sha2::{Digest as _, Sha256};
 use uuid::Uuid;
 
+use crate::errors::{Actor, AppError};
+use crate::ports::{
+    AuditEvent, AuditOutcome, AuditSink, BlobStore, DocumentRepository, PatientRepository,
+};
 use medassist_domain::document::{ClinicalDocument, ProcessingState};
-use crate::errors::{AppError, Actor};
-use crate::ports::{AuditEvent, AuditOutcome, AuditSink, BlobStore, DocumentRepository, PatientRepository};
 
-pub struct DocumentService<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> {
+pub struct DocumentService<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink>
+{
     pub docs: D,
     pub blobs: B,
     pub patients: P,
     pub audit: A,
 }
 
-impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> DocumentService<D, B, P, A> {
+impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink>
+    DocumentService<D, B, P, A>
+{
     pub fn new(docs: D, blobs: B, patients: P, audit: A) -> Self {
-        Self { docs, blobs, patients, audit }
+        Self {
+            docs,
+            blobs,
+            patients,
+            audit,
+        }
     }
 
     /// Import a document for a patient. Validates filename/mime/size, computes
@@ -41,20 +51,37 @@ impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> Do
         let patient = match self.patients.get(actor, patient_id).await? {
             Some(p) => p,
             None => {
-                self.audit(actor, Some(patient_id), "document.import", AuditOutcome::Denied).await;
+                self.audit(
+                    actor,
+                    Some(patient_id),
+                    "document.import",
+                    AuditOutcome::Denied,
+                )
+                .await;
                 return Err(AppError::Forbidden("patient not visible to you"));
             }
         };
         if patient.org_id != actor.org_id && !actor.is_admin() {
-            self.audit(actor, Some(patient_id), "document.import", AuditOutcome::Denied).await;
+            self.audit(
+                actor,
+                Some(patient_id),
+                "document.import",
+                AuditOutcome::Denied,
+            )
+            .await;
             return Err(AppError::Forbidden("patient is outside your organisation"));
         }
 
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
-        let sha256 = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let sha256 = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
 
-        let kind = ClinicalDocument::validate_new(&filename, &content_type, bytes.len() as u64, &sha256)?;
+        let kind =
+            ClinicalDocument::validate_new(&filename, &content_type, bytes.len() as u64, &sha256)?;
 
         let id = Uuid::new_v4();
         let doc = ClinicalDocument {
@@ -63,7 +90,11 @@ impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> Do
             patient_id,
             encounter_id,
             kind,
-            filename: filename.rsplit(['/', '\\']).next().unwrap_or(&filename).to_owned(),
+            filename: filename
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(&filename)
+                .to_owned(),
             content_type,
             size_bytes: bytes.len() as u64,
             sha256,
@@ -75,7 +106,8 @@ impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> Do
         };
         self.blobs.put(patient.org_id, id, &bytes).await?;
         self.docs.insert(&doc).await?;
-        self.audit(actor, Some(id), "document.import", AuditOutcome::Success).await;
+        self.audit(actor, Some(id), "document.import", AuditOutcome::Success)
+            .await;
         Ok(doc)
     }
 
@@ -92,7 +124,9 @@ impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> Do
             Some(p) => p,
             None => return Err(AppError::NotFound("patient")),
         };
-        self.docs.list_for_patient(actor, patient_id, limit, offset).await
+        self.docs
+            .list_for_patient(actor, patient_id, limit, offset)
+            .await
     }
 
     pub async fn get(&self, actor: &Actor, id: Uuid) -> Result<ClinicalDocument, AppError> {
@@ -111,19 +145,32 @@ impl<D: DocumentRepository, B: BlobStore, P: PatientRepository, A: AuditSink> Do
     /// Mark extraction results as reviewed by a professional.
     pub async fn mark_reviewed(&self, actor: &Actor, id: Uuid) -> Result<(), AppError> {
         if !actor.has_role("practitioner") && !actor.is_admin() {
-            self.audit(actor, Some(id), "document.review", AuditOutcome::Denied).await;
+            self.audit(actor, Some(id), "document.review", AuditOutcome::Denied)
+                .await;
             return Err(AppError::Forbidden("requires practitioner role"));
         }
         let d = self.get(actor, id).await?;
         if d.state != ProcessingState::Extracted {
-            return Err(AppError::Unprocessable(format!("cannot review document in state {:?}", d.state)));
+            return Err(AppError::Unprocessable(format!(
+                "cannot review document in state {:?}",
+                d.state
+            )));
         }
-        self.docs.set_state(actor, id, ProcessingState::Reviewed, None).await?;
-        self.audit(actor, Some(id), "document.review", AuditOutcome::Success).await;
+        self.docs
+            .set_state(actor, id, ProcessingState::Reviewed, None)
+            .await?;
+        self.audit(actor, Some(id), "document.review", AuditOutcome::Success)
+            .await;
         Ok(())
     }
 
-    async fn audit(&self, actor: &Actor, resource_id: Option<Uuid>, action: &str, outcome: AuditOutcome) {
+    async fn audit(
+        &self,
+        actor: &Actor,
+        resource_id: Option<Uuid>,
+        action: &str,
+        outcome: AuditOutcome,
+    ) {
         self.audit
             .record(AuditEvent {
                 time: Utc::now(),
@@ -160,16 +207,40 @@ mod tests {
         async fn get(&self, _a: &Actor, id: Uuid) -> Result<Option<ClinicalDocument>, AppError> {
             Ok(self.0.lock().unwrap().get(&id).cloned())
         }
-        async fn set_state(&self, _a: &Actor, id: Uuid, state: ProcessingState, error: Option<String>) -> Result<(), AppError> {
+        async fn set_state(
+            &self,
+            _a: &Actor,
+            id: Uuid,
+            state: ProcessingState,
+            error: Option<String>,
+        ) -> Result<(), AppError> {
             if let Some(d) = self.0.lock().unwrap().get_mut(&id) {
                 d.state = state;
                 d.error = error;
             }
             Ok(())
         }
-        async fn list_for_patient(&self, _a: &Actor, pid: Uuid, limit: i64, offset: i64) -> Result<Page<ClinicalDocument>, AppError> {
-            let items: Vec<_> = self.0.lock().unwrap().values().filter(|d| d.patient_id == pid).cloned().collect();
-            Ok(Page { total: items.len() as i64, limit, offset, items })
+        async fn list_for_patient(
+            &self,
+            _a: &Actor,
+            pid: Uuid,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Page<ClinicalDocument>, AppError> {
+            let items: Vec<_> = self
+                .0
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|d| d.patient_id == pid)
+                .cloned()
+                .collect();
+            Ok(Page {
+                total: items.len() as i64,
+                limit,
+                offset,
+                items,
+            })
         }
     }
 
@@ -184,7 +255,12 @@ mod tests {
             Ok(key)
         }
         async fn get(&self, key: &str) -> Result<Vec<u8>, AppError> {
-            self.0.lock().unwrap().get(key).cloned().ok_or(AppError::NotFound("blob"))
+            self.0
+                .lock()
+                .unwrap()
+                .get(key)
+                .cloned()
+                .ok_or(AppError::NotFound("blob"))
         }
         async fn delete(&self, key: &str) -> Result<(), AppError> {
             self.0.lock().unwrap().remove(key);
@@ -206,20 +282,36 @@ mod tests {
         }
         async fn search(&self, _a: &Actor, q: &PatientQuery) -> Result<Page<Patient>, AppError> {
             let items: Vec<_> = self.0.lock().unwrap().values().cloned().collect();
-            Ok(Page { total: items.len() as i64, limit: q.limit, offset: q.offset, items })
+            Ok(Page {
+                total: items.len() as i64,
+                limit: q.limit,
+                offset: q.offset,
+                items,
+            })
         }
         async fn update(&self, p: &Patient) -> Result<(), AppError> {
             self.0.lock().unwrap().insert(p.id, p.clone());
             Ok(())
         }
-        async fn soft_delete(&self, _a: &Actor, id: Uuid, now: DateTimeHelper) -> Result<bool, AppError> {
+        async fn soft_delete(
+            &self,
+            _a: &Actor,
+            id: Uuid,
+            now: DateTimeHelper,
+        ) -> Result<bool, AppError> {
             if let Some(p) = self.0.lock().unwrap().get_mut(&id) {
                 p.deleted_at = Some(now);
                 return Ok(true);
             }
             Ok(false)
         }
-        async fn duplicate_candidates(&self, _a: &Actor, _n: String, _b: Option<chrono::NaiveDate>, _k: Vec<String>) -> Result<Vec<(Patient, f64)>, AppError> {
+        async fn duplicate_candidates(
+            &self,
+            _a: &Actor,
+            _n: String,
+            _b: Option<chrono::NaiveDate>,
+            _k: Vec<String>,
+        ) -> Result<Vec<(Patient, f64)>, AppError> {
             Ok(vec![])
         }
     }
@@ -236,14 +328,26 @@ mod tests {
     }
 
     fn svc() -> DocumentService<MemDocs, MemBlobs, MemPatients, MemAudit> {
-        DocumentService::new(MemDocs::default(), MemBlobs::default(), MemPatients::default(), MemAudit::default())
+        DocumentService::new(
+            MemDocs::default(),
+            MemBlobs::default(),
+            MemPatients::default(),
+            MemAudit::default(),
+        )
     }
 
     fn actor_with_org(org: Uuid) -> Actor {
-        Actor { user_id: Uuid::new_v4(), org_id: org, roles: vec!["recorder".into()] }
+        Actor {
+            user_id: Uuid::new_v4(),
+            org_id: org,
+            roles: vec!["recorder".into()],
+        }
     }
 
-    fn seed_patient(s: &DocumentService<MemDocs, MemBlobs, MemPatients, MemAudit>, org: Uuid) -> Patient {
+    fn seed_patient(
+        s: &DocumentService<MemDocs, MemBlobs, MemPatients, MemAudit>,
+        org: Uuid,
+    ) -> Patient {
         let p = NewPatient {
             org_id: org,
             family_name: "Teste".into(),
@@ -266,12 +370,25 @@ mod tests {
         let a = actor_with_org(org);
         let p = seed_patient(&s, org);
         let bytes = b"%PDF-1.4 fake synthetic pdf".to_vec();
-        let d = s.import(&a, p.id, None, "laudo.pdf".into(), "application/pdf".into(), bytes.clone()).await.unwrap();
+        let d = s
+            .import(
+                &a,
+                p.id,
+                None,
+                "laudo.pdf".into(),
+                "application/pdf".into(),
+                bytes.clone(),
+            )
+            .await
+            .unwrap();
         assert_eq!(d.kind, medassist_domain::document::DocumentKind::Pdf);
         assert_eq!(d.sha256, {
             let mut h = Sha256::new();
             h.update(&bytes);
-            h.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>()
+            h.finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
         });
         let got = s.download(&a, d.id).await.unwrap();
         assert_eq!(got, bytes);
@@ -284,12 +401,35 @@ mod tests {
         let a = actor_with_org(org);
         let p = seed_patient(&s, org);
 
-        let err = s.import(&a, p.id, None, "../evil.pdf".into(), "application/pdf".into(), b"x".to_vec()).await;
-        assert!(matches!(err, Err(AppError::Domain(DomainError::Validation { .. }))));
+        let err = s
+            .import(
+                &a,
+                p.id,
+                None,
+                "../evil.pdf".into(),
+                "application/pdf".into(),
+                b"x".to_vec(),
+            )
+            .await;
+        assert!(matches!(
+            err,
+            Err(AppError::Domain(
+                medassist_domain::error::DomainError::Validation { .. }
+            ))
+        ));
 
         let other_org = Uuid::new_v4();
         let other_actor = actor_with_org(other_org);
-        let err = s.import(&other_actor, p.id, None, "ok.pdf".into(), "application/pdf".into(), b"x".to_vec()).await;
+        let err = s
+            .import(
+                &other_actor,
+                p.id,
+                None,
+                "ok.pdf".into(),
+                "application/pdf".into(),
+                b"x".to_vec(),
+            )
+            .await;
         assert!(matches!(err, Err(AppError::Forbidden(_))));
     }
 
@@ -299,16 +439,36 @@ mod tests {
         let org = Uuid::new_v4();
         let a = actor_with_org(org);
         let p = seed_patient(&s, org);
-        let d = s.import(&a, p.id, None, "r.txt".into(), "text/plain".into(), b"resultado".to_vec()).await.unwrap();
+        let d = s
+            .import(
+                &a,
+                p.id,
+                None,
+                "r.txt".into(),
+                "text/plain".into(),
+                b"resultado".to_vec(),
+            )
+            .await
+            .unwrap();
         // pending -> cannot review
         assert!(s.mark_reviewed(&a, d.id).await.is_err());
         // extracted but recorder lacks role
-        s.docs.set_state(&a, d.id, ProcessingState::Extracted, None).await.unwrap();
+        s.docs
+            .set_state(&a, d.id, ProcessingState::Extracted, None)
+            .await
+            .unwrap();
         let err = s.mark_reviewed(&a, d.id).await.unwrap_err();
         assert!(matches!(err, AppError::Forbidden(_)));
         // practitioner can
-        let prac = Actor { user_id: a.user_id, org_id: org, roles: vec!["practitioner".into()] };
+        let prac = Actor {
+            user_id: a.user_id,
+            org_id: org,
+            roles: vec!["practitioner".into()],
+        };
         s.mark_reviewed(&prac, d.id).await.unwrap();
-        assert_eq!(s.get(&prac, d.id).await.unwrap().state, ProcessingState::Reviewed);
+        assert_eq!(
+            s.get(&prac, d.id).await.unwrap().state,
+            ProcessingState::Reviewed
+        );
     }
 }

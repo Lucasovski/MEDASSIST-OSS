@@ -7,7 +7,7 @@ use uuid::Uuid;
 use medassist_domain::patient::{NewPatient, Patient};
 use medassist_domain::DomainError;
 
-use crate::errors::{AppError, Actor};
+use crate::errors::{Actor, AppError};
 use crate::ports::{AuditEvent, AuditOutcome, AuditSink, Page, PatientQuery, PatientRepository};
 
 /// Score at/above which creation surfaces duplicate candidates for review.
@@ -35,15 +35,26 @@ impl<R: PatientRepository, A: AuditSink> PatientService<R, A> {
     ) -> Result<Patient, AppError> {
         if input.org_id != actor.org_id && !actor.is_admin() {
             self.audit(actor, None, "patient.create", "denied").await;
-            return Err(AppError::Forbidden("cannot create patients for another organisation"));
+            return Err(AppError::Forbidden(
+                "cannot create patients for another organisation",
+            ));
         }
         input.validate()?;
 
         if !allow_duplicates {
-            let keys: Vec<String> = input.external_ids.iter().map(|e| e.normalised_key()).collect();
+            let keys: Vec<String> = input
+                .external_ids
+                .iter()
+                .map(|e| e.normalised_key())
+                .collect();
             let candidates = self
                 .repo
-                .duplicate_candidates(actor, format!("{} {}", input.given_name, input.family_name), input.birth_date, keys)
+                .duplicate_candidates(
+                    actor,
+                    format!("{} {}", input.given_name, input.family_name),
+                    input.birth_date,
+                    keys,
+                )
                 .await?;
             let strong: Vec<Uuid> = candidates
                 .into_iter()
@@ -51,9 +62,14 @@ impl<R: PatientRepository, A: AuditSink> PatientService<R, A> {
                 .map(|(p, _)| p.id)
                 .collect();
             if !strong.is_empty() {
-                self.audit(actor, None, "patient.create.duplicate_blocked", "failure").await;
+                self.audit(actor, None, "patient.create.duplicate_blocked", "failure")
+                    .await;
                 return Err(DomainError::DuplicateCandidate(
-                    strong.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(","),
+                    strong
+                        .iter()
+                        .map(|u| u.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
                 )
                 .into());
             }
@@ -62,7 +78,8 @@ impl<R: PatientRepository, A: AuditSink> PatientService<R, A> {
         let id = Uuid::new_v4();
         let patient = input.into_patient(id, now);
         self.repo.insert(&patient).await?;
-        self.audit(actor, Some(patient.id), "patient.create", "success").await;
+        self.audit(actor, Some(patient.id), "patient.create", "success")
+            .await;
         Ok(patient)
     }
 
@@ -81,6 +98,7 @@ impl<R: PatientRepository, A: AuditSink> PatientService<R, A> {
     }
 
     /// Update mutable demographics. Identity fields (id/org) are not editable.
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         actor: &Actor,
@@ -106,7 +124,9 @@ impl<R: PatientRepository, A: AuditSink> PatientService<R, A> {
         if let Some(v) = birth_date {
             if let Some(bd) = v {
                 if bd > now.date_naive() {
-                    return Err(DomainError::validation("birth_date", "cannot be in the future").into());
+                    return Err(
+                        DomainError::validation("birth_date", "cannot be in the future").into(),
+                    );
                 }
             }
             p.birth_date = v;
@@ -122,21 +142,29 @@ impl<R: PatientRepository, A: AuditSink> PatientService<R, A> {
         }
         p.updated_at = now;
         self.repo.update(&p).await?;
-        self.audit(actor, Some(p.id), "patient.update", "success").await;
+        self.audit(actor, Some(p.id), "patient.update", "success")
+            .await;
         Ok(p)
     }
 
     /// Soft delete (tombstone). Hard deletion/retention is an ops policy.
-    pub async fn soft_delete(&self, actor: &Actor, id: Uuid, now: DateTime<Utc>) -> Result<(), AppError> {
+    pub async fn soft_delete(
+        &self,
+        actor: &Actor,
+        id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<(), AppError> {
         if !actor.has_role("recorder") && !actor.is_admin() {
-            self.audit(actor, Some(id), "patient.delete", "denied").await;
+            self.audit(actor, Some(id), "patient.delete", "denied")
+                .await;
             return Err(AppError::Forbidden("requires recorder or admin role"));
         }
         let removed = self.repo.soft_delete(actor, id, now).await?;
         if !removed {
             return Err(AppError::NotFound("patient"));
         }
-        self.audit(actor, Some(id), "patient.soft_delete", "success").await;
+        self.audit(actor, Some(id), "patient.soft_delete", "success")
+            .await;
         Ok(())
     }
 

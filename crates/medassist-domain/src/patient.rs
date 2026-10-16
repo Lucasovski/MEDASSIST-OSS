@@ -67,7 +67,10 @@ impl NewPatient {
         // Given name may legitimately be single-name individuals; still keep
         // *some* identification: require at least one non-space char overall.
         if giv.is_empty() && fam.is_empty() {
-            return Err(DomainError::validation("given_name", "patient must have a name"));
+            return Err(DomainError::validation(
+                "given_name",
+                "patient must have a name",
+            ));
         }
         if giv.chars().count() > 200 {
             return Err(DomainError::validation(
@@ -96,7 +99,10 @@ impl NewPatient {
         }
         if let Some(c) = &self.contact {
             if c.chars().count() > 500 {
-                return Err(DomainError::validation("contact", "too long (max 500 chars)"));
+                return Err(DomainError::validation(
+                    "contact",
+                    "too long (max 500 chars)",
+                ));
             }
         }
         Ok(())
@@ -110,7 +116,10 @@ impl NewPatient {
             given_name: self.given_name.trim().to_owned(),
             birth_date: self.birth_date,
             sex: self.sex,
-            contact: self.contact.map(|c| c.trim().to_owned()).filter(|c| !c.is_empty()),
+            contact: self
+                .contact
+                .map(|c| c.trim().to_owned())
+                .filter(|c| !c.is_empty()),
             external_ids: self.external_ids,
             notes: self.notes.filter(|n| !n.trim().is_empty()),
             created_at: now,
@@ -124,13 +133,25 @@ impl NewPatient {
     /// review. Exact external-id match => strong candidate.
     pub fn duplicate_score_against(&self, other: &Patient) -> f64 {
         let mut score = 0.0f64;
-        let keys_new: Vec<String> = self.external_ids.iter().map(|e| e.normalised_key()).collect();
-        let keys_old: Vec<String> = other.external_ids.iter().map(|e| e.normalised_key()).collect();
+        let keys_new: Vec<String> = self
+            .external_ids
+            .iter()
+            .map(|e| e.normalised_key())
+            .collect();
+        let keys_old: Vec<String> = other
+            .external_ids
+            .iter()
+            .map(|e| e.normalised_key())
+            .collect();
         if keys_new.iter().any(|k| keys_old.contains(k)) {
             score += 0.7;
         }
         let norm = |s: &str| -> String {
-            s.trim().to_lowercase().chars().filter(|c| !c.is_whitespace()).collect()
+            s.trim()
+                .to_lowercase()
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect()
         };
         if !self.given_name.trim().is_empty()
             && norm(&self.given_name) == norm(&other.given_name)
@@ -194,7 +215,11 @@ mod tests {
     #[test]
     fn duplicate_score_flags_exact_external_id_and_dob() {
         let now = Utc::now();
-        let eid = ExternalIdentifier { system: crate::identifier::ExternalIdSystem::Mrn, value: "MRN-1".into(), issuer: None };
+        let eid = ExternalIdentifier {
+            system: crate::identifier::ExternalIdSystem::Mrn,
+            value: "MRN-1".into(),
+            issuer: None,
+        };
         let _base = sample();
         let existing = {
             let mut q = sample();

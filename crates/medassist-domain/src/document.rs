@@ -53,13 +53,24 @@ pub struct ClinicalDocument {
 pub const MAX_DOCUMENT_BYTES: u64 = 25 * 1024 * 1024;
 
 impl ClinicalDocument {
-    pub fn validate_new(filename: &str, content_type: &str, size_bytes: u64, sha256: &str) -> Result<DocumentKind, DomainError> {
+    pub fn validate_new(
+        filename: &str,
+        content_type: &str,
+        size_bytes: u64,
+        sha256: &str,
+    ) -> Result<DocumentKind, DomainError> {
         if filename.trim().is_empty() || filename.len() > 255 {
-            return Err(DomainError::validation("filename", "invalid filename length"));
+            return Err(DomainError::validation(
+                "filename",
+                "invalid filename length",
+            ));
         }
         // Path-traversal defence: filenames must not contain separators.
         if filename.contains('/') || filename.contains('\\') || filename.contains('\0') {
-            return Err(DomainError::validation("filename", "must not contain path separators"));
+            return Err(DomainError::validation(
+                "filename",
+                "must not contain path separators",
+            ));
         }
         if size_bytes == 0 {
             return Err(DomainError::validation("size", "empty file"));
@@ -110,7 +121,10 @@ impl LabResult {
             return Err(DomainError::validation("name", "lab result name required"));
         }
         if self.value.trim().is_empty() {
-            return Err(DomainError::validation("value", "lab result value required"));
+            return Err(DomainError::validation(
+                "value",
+                "lab result value required",
+            ));
         }
         Ok(())
     }
@@ -123,7 +137,8 @@ mod tests {
     #[test]
     fn classifies_supported_types() {
         assert_eq!(
-            ClinicalDocument::validate_new("laudo.pdf", "application/pdf", 1000, &"a".repeat(64)).unwrap(),
+            ClinicalDocument::validate_new("laudo.pdf", "application/pdf", 1000, &"a".repeat(64))
+                .unwrap(),
             DocumentKind::Pdf
         );
         assert_eq!(
@@ -135,10 +150,20 @@ mod tests {
     #[test]
     fn rejects_unsafe_or_oversized_uploads() {
         let hash = "c".repeat(64);
-        assert!(ClinicalDocument::validate_new("../../etc/passwd", "text/plain", 10, &hash).is_err());
+        assert!(
+            ClinicalDocument::validate_new("../../etc/passwd", "text/plain", 10, &hash).is_err()
+        );
         assert!(ClinicalDocument::validate_new("ok.txt", "text/plain", 0, &hash).is_err());
-        assert!(ClinicalDocument::validate_new("big.txt", "text/plain", MAX_DOCUMENT_BYTES + 1, &hash).is_err());
-        assert!(ClinicalDocument::validate_new("x.exe", "application/octet-stream", 10, &hash).is_err());
+        assert!(ClinicalDocument::validate_new(
+            "big.txt",
+            "text/plain",
+            MAX_DOCUMENT_BYTES + 1,
+            &hash
+        )
+        .is_err());
+        assert!(
+            ClinicalDocument::validate_new("x.exe", "application/octet-stream", 10, &hash).is_err()
+        );
         assert!(ClinicalDocument::validate_new("ok.txt", "text/plain", 10, "nothash").is_err());
     }
 

@@ -3,7 +3,7 @@
 
 use uuid::Uuid;
 
-use crate::errors::{AppError, Actor};
+use crate::errors::{Actor, AppError};
 use crate::ports::AuditEvent;
 
 /// In-memory + repository-backed audit reader is provided by infrastructure;
@@ -15,7 +15,12 @@ pub struct AuditService<S: AuditLister> {
 
 #[async_trait::async_trait]
 pub trait AuditLister: Send + Sync {
-    async fn list(&self, org_id: Uuid, limit: i64, offset: i64) -> Result<(Vec<AuditEvent>, i64), AppError>;
+    async fn list(
+        &self,
+        org_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<AuditEvent>, i64), AppError>;
 }
 
 impl<S: AuditLister> AuditService<S> {
@@ -23,9 +28,16 @@ impl<S: AuditLister> AuditService<S> {
         Self { lister }
     }
 
-    pub async fn list(&self, actor: &Actor, limit: i64, offset: i64) -> Result<(Vec<AuditEvent>, i64), AppError> {
+    pub async fn list(
+        &self,
+        actor: &Actor,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<AuditEvent>, i64), AppError> {
         if !actor.is_admin() {
-            return Err(AppError::Forbidden("audit events are visible to administrators only"));
+            return Err(AppError::Forbidden(
+                "audit events are visible to administrators only",
+            ));
         }
         self.lister.list(actor.org_id, limit, offset).await
     }

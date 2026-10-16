@@ -26,7 +26,9 @@ impl VitalSignType {
     /// canonical unit — no implicit conversions are performed anywhere.
     pub fn canonical_unit(&self) -> &'static str {
         match self {
-            VitalSignType::SystolicBp | VitalSignType::DiastolicBp | VitalSignType::GlucoseMgL => "mmHg",
+            VitalSignType::SystolicBp | VitalSignType::DiastolicBp | VitalSignType::GlucoseMgL => {
+                "mmHg"
+            }
             VitalSignType::HeartRate | VitalSignType::RespiratoryRate => "bpm",
             VitalSignType::TemperatureCelsius => "°C",
             VitalSignType::SpO2 => "%",
@@ -107,14 +109,23 @@ mod tests {
             value,
             unit: unit.into(),
             measured_at: Utc::now(),
-            provenance: Provenance::new(ProvenanceKind::ObjectiveMeasurement, SourceRef::Practitioner { user_id: Uuid::new_v4() }),
+            provenance: Provenance::new(
+                ProvenanceKind::ObjectiveMeasurement,
+                SourceRef::Practitioner {
+                    user_id: Uuid::new_v4(),
+                },
+            ),
         }
     }
 
     #[test]
     fn accepts_plausible_measurement() {
-        vs(VitalSignType::SystolicBp, 130.0, "mmHg").validate().unwrap();
-        vs(VitalSignType::TemperatureCelsius, 36.5, "°C").validate().unwrap();
+        vs(VitalSignType::SystolicBp, 130.0, "mmHg")
+            .validate()
+            .unwrap();
+        vs(VitalSignType::TemperatureCelsius, 36.5, "°C")
+            .validate()
+            .unwrap();
     }
 
     #[test]
@@ -126,7 +137,9 @@ mod tests {
 
     #[test]
     fn rejects_implausible_values_and_nan() {
-        assert!(vs(VitalSignType::HeartRate, 500.0, "bpm").validate().is_err());
+        assert!(vs(VitalSignType::HeartRate, 500.0, "bpm")
+            .validate()
+            .is_err());
         assert!(vs(VitalSignType::SpO2, f64::NAN, "%").validate().is_err());
     }
 }
