@@ -1,8 +1,8 @@
 # MedAssist OSS - Implementation Status
 
 **Last Updated:** 2026-10-16  
-**Branch:** main  
-**Commit:** 50bcc99 (HEAD detached at FETCH_HEAD)
+**Branch:** vibe/fix-compilation-and-clippy-228feb  
+**Commit:** 57ebf46 (HEAD at vibe/fix-compilation-and-clippy-228feb)
 
 ---
 
@@ -20,7 +20,7 @@ This document tracks the current implementation status of MedAssist OSS, includi
 - [x] **Application Layer**: Use-cases and ports (traits) for repositories, auth, AI engines
 - [x] **Infrastructure Layer**: SQLx/PostgreSQL repositories, filesystem blob store, AI adapters
 - [x] **API Layer**: Axum HTTP skeleton with health/readiness endpoints
-- [x] **CLI Layer**: Command-line administration tool skeleton
+- [x] **CLI Layer**: Command-line administration tool with full functionality
 
 ### Domain Model (medassist-domain)
 - [x] **Patient**: Stable UUID identity, external identifiers, duplicate control
@@ -67,6 +67,14 @@ This document tracks the current implementation status of MedAssist OSS, includi
 - [x] **Error Handling**: Typed `ApiError` envelope
 - [x] **Tracing**: Request tracing middleware
 - [x] **State Management**: Application state wiring
+- [x] **Auth**: Login, logout, session management endpoints
+- [x] **Patient CRUD**: GET /patients, POST /patients, GET /patients/:id, PATCH /patients/:id, DELETE /patients/:id
+- [x] **Encounter CRUD**: GET /patients/:id/encounters, POST /patients/:id/encounters
+- [x] **Note CRUD**: Full lifecycle endpoints with versions, review, finalize, amend
+- [x] **Document CRUD**: Upload, download, review endpoints
+- [x] **Transcription**: Consent, start, cancel, review, draft-body endpoints
+- [x] **AI**: Documentation draft generation endpoint
+- [x] **System**: Capabilities, audit, templates, coding search endpoints
 
 ### Governance & Documentation
 - [x] **LICENSE**: GNU GPL v3.0 or later
@@ -89,7 +97,11 @@ This document tracks the current implementation status of MedAssist OSS, includi
 - [x] Fix compilation errors with `Box::new` in `NoteBody::Soap` variants
 - [x] Fix clippy warnings (single_match, too_many_arguments, unused_imports, box_default)
 - [x] Verify all unit tests pass (36 domain + 21 application + 3 infrastructure = 60 total)
-- [ ] Create comprehensive `IMPLEMENTATION_STATUS.md` (this document)
+- [x] Create comprehensive `IMPLEMENTATION_STATUS.md` (this document)
+- [x] Implement CLI tool with full functionality
+- [x] Create architecture documentation
+- [x] Create privacy documentation
+- [x] Create deployment documentation
 
 ---
 

@@ -18,7 +18,7 @@ for every AI suggestion. Licensed **GPL-3.0-or-later**.
 | PostgreSQL schema + migrations | OK | OK | -- | gated on `DATABASE_URL` |
 | SQLx repositories / blob store / AI test-double / Ollama adapter skeleton | OK | OK | partial | pending live DB run |
 | Axum API (health/readiness, typed errors, tracing) | OK | OK | OK | running binary |
-| CRUD/clinical endpoints over services | NOT YET (stubs) | OK | -- | -- |
+| CRUD/clinical endpoints over services | OK | OK | -- | pending live DB run |
 | Web UI (Leptos), desktop (Tauri), FHIR, RAG, OCR, audio capture | NOT STARTED | -- | -- | -- |
 
 ## Features
@@ -102,8 +102,8 @@ explicitly configures a remote endpoint.
 
 ## Limitations (current release)
 
-- Only health endpoints are functional in the HTTP API; clinical REST routes
-  are next on the roadmap (services already exist behind them).
+- CRUD endpoints are implemented in routes.rs but require live PostgreSQL for full integration testing.
+  Services layer is complete and tested.
 - Transcription/AI real-model execution requires an operator-provided local
   provider (e.g., Ollama); none is bundled. No weights ship with the repo.
 - Accessibility (WCAG 2.2 AA) work begins with the web UI.
