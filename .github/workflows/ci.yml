@@ -21,7 +21,7 @@ jobs:
           POSTGRES_DB: medassist_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U medassist"
+          --health-cmd "pg_isready -U medassist -d medassist_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +49,7 @@ jobs:
         run: |
           cargo install sqlx-cli --no-default-features --features postgres --locked
           sqlx database setup
+          sqlx migrate run
           cargo test --workspace -- --include-ignored
 
   license-audit:
