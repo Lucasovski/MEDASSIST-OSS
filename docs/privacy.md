@@ -1,506 +1,652 @@
-# MedAssist OSS - Privacy & Data Protection
+# MedAssist OSS - Privacy and Data Protection
 
 **License:** GPL-3.0-or-later  
-**Version:** 0.1.0  
+**Status:** Work in Progress  
 **Last Updated:** 2026-10-16
 
 ---
 
 ## Overview
 
-MedAssist OSS is designed with **privacy-by-design** principles, treating all clinical data as sensitive personal information in accordance with **LGPD (Lei Geral de Proteção de Dados - Brazil)** and similar data protection regulations.
+MedAssist OSS is designed with **privacy-by-design** principles at its core. This document describes how the system handles personal data, ensures compliance with privacy regulations (particularly **LGPD - Lei Geral de Proteção de Dados** in Brazil), and implements technical and organizational measures to protect patient and user data.
 
-This document outlines:
-- Data classification and handling
-- Data flows and retention policies
-- Technical and organizational measures
-- User rights and compliance
-- Clinical safety considerations
+**Important:** This document describes the technical implementation and design decisions. It does NOT constitute legal advice or certification of compliance. Organizations using MedAssist OSS must conduct their own legal review and implement additional measures as required by their jurisdiction and use case.
+
+---
+
+## Privacy Principles
+
+### 1. Data Minimization
+
+**Principle:** Collect and store only the minimum data necessary for the intended purpose.
+
+**Implementation:**
+- All domain models require only essential fields
+- Optional fields are clearly marked and have sensible defaults
+- No redundant data storage (normalize where appropriate)
+- Sensitive data is not logged or stored unnecessarily
+
+### 2. Purpose Limitation
+
+**Principle:** Data is collected for specific, explicit, and legitimate purposes and not further processed in a manner incompatible with those purposes.
+
+**Implementation:**
+- Each data field has a clearly defined purpose
+- Data processing is limited to clinical documentation support
+- No data is used for marketing, advertising, or unrelated purposes
+
+### 3. Data Quality
+
+**Principle:** Keep personal data accurate and, where necessary, up to date.
+
+**Implementation:**
+- Audit trails track all changes to clinical data
+- Version history preserves previous versions
+- Users can correct inaccurate information
+- System validates data integrity (hashes, checksums)
+
+### 4. Transparency
+
+**Principle:** Provide clear information about data collection, processing, and storage.
+
+**Implementation:**
+- Audit logging for all sensitive operations
+- Clear documentation of data flows
+- User-accessible audit trails (within their permissions)
+
+### 5. Security
+
+**Principle:** Implement appropriate technical and organizational measures to protect data.
+
+**Implementation:**
+- Encryption at rest (delegated to PostgreSQL)
+- Encryption in transit (TLS)
+- Access controls and authentication
+- Secure session management
+- Input validation and sanitization
+
+### 6. Data Subject Rights
+
+**Principle:** Respect data subject rights including access, rectification, erasure, and portability.
+
+**Implementation:**
+- API endpoints for data access
+- Audit trails for data changes
+- Soft deletion with configurable retention
+- Data export capabilities (planned)
 
 ---
 
 ## Data Classification
 
-### 1. Personal Data (LGPD Art. 5, XII)
+### Personal Data Categories
 
-Any information related to an identified or identifiable natural person.
+| Category | Description | Examples | Sensitivity |
+|----------|-------------|----------|-------------|
+| **Identification Data** | Data that directly identifies an individual | Name, email, CPF, CNS, RG | High |
+| **Clinical Data** | Health-related information | Diagnoses, treatments, medications, allergies | High |
+| **Contact Data** | Communication information | Phone, address, email | Medium |
+| **Technical Data** | System usage information | IP addresses, session tokens, timestamps | Medium |
+| **Audit Data** | Operational logs | Who accessed what, when | Medium |
 
-**In MedAssist OSS, this includes:**
-- Patient identifiers (name, UUID, external IDs like CNS)
-- Demographic information (birth date, sex, contact info)
-- Clinical history and encounters
-- Diagnoses, medications, allergies
-- Vital signs measurements
-- Documents and lab results
-- Audio recordings and transcriptions
-- Consent records
+### Special Categories of Personal Data
 
-### 2. Sensitive Personal Data (LGPD Art. 11)
+Under LGPD, health data is considered **sensitive personal data** and requires enhanced protection:
 
-Personal data concerning health or intimate life.
+- **Health Data:** Any information related to the physical or mental health of a data subject
+- **Biometric Data:** Fingerprints, facial recognition, etc. (not currently collected)
+- **Genetic Data:** Genetic information (not currently collected)
 
-**In MedAssist OSS, ALL clinical data is considered sensitive:**
-- Health conditions and diagnoses
-- Medical history
-- Treatment information
-- Genetic information (if collected)
-- Biometric data (if collected)
-
-### 3. Anonymous Data
-
-Data that cannot be related back to an individual.
-
-**In MedAssist OSS:**
-- Aggregated statistics (if implemented)
-- De-identified research data (if implemented with proper safeguards)
+**MedAssist OSS primarily handles health data and identification data, both of which are subject to strict protection requirements.**
 
 ---
 
-## Data Flow Architecture
+## Data Flows
 
-### 1. Data at Rest
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PostgreSQL Database                         │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │  Clinical Tables (patients, encounters, notes, etc.)       │ │
-│  │  - org_id: Multi-tenant isolation                         │ │
-│  │  - All data encrypted at storage level (future)            │ │
-│  │  - Row-level access control via org_id filtering          │ │
-│  └─────────────────────────────────────────────────────────┘ │
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │  Audit Tables (audit_events)                              │ │
-│  │  - No clinical content stored                             │ │
-│  │  - Actor, action, resource, timestamp, outcome only        │ │
-│  └─────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│                    Filesystem Blob Store                       │
-│  - Documents: Original files stored immutably                 │
-│  - SHA-256 hash verification for integrity                    │
-│  - Path sanitization prevents directory traversal            │
-│  - Configurable base directory (MEDASSIST_BLOB_DIR)           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 2. Data in Transit
+### 1. Patient Data Flow
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│     Client       │────▶│   Reverse Proxy  │────▶│     API         │
-│  (Browser/UI)    │     │   (TLS Term)    │     │  (Axum)         │
+│   Healthcare     │────▶│   MedAssist     │────▶│   PostgreSQL     │
+│   Professional   │     │   API Server     │     │   Database       │
+│   (Browser/App)  │◀────│                 │◀────│                 │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                        │
-                                                        ▼
-                                                 ┌─────────────────┐
-                                                 │  PostgreSQL     │
-                                                 │  (TLS Recommended)│
-                                                 └─────────────────┘
-
-Requirements:
-- TLS 1.2+ for all external connections
-- HttpOnly, Secure, SameSite=Strict cookies
-- No sensitive data in URLs or headers
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │   Audit Log      │
+                     │   (Access Track) │
+                     └─────────────────┘
 ```
 
-### 3. Data in Processing
+**Data Elements:**
+- Patient identifiers (name, external IDs)
+- Clinical observations (vital signs, symptoms)
+- Diagnoses and treatments
+- Medications and allergies
+- Documents and images
+
+### 2. Authentication Data Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Memory (During Request)                     │
-│  - Data loaded only for authenticated actor's org             │
-│  - Minimal data loaded (pagination, filtering)                 │
-│  - No caching of clinical data in memory                      │
-│  - Sensitive fields masked in logs                            │
-└─────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│                    AI Processing                               │
-│  - Local inference preferred (no data leaves deployment)     │
-│  - If remote AI used: explicit opt-in with warnings            │
-│  - All AI output treated as untrusted (draft, unreviewed)      │
-│  - Human review mandatory before finalization                 │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   User           │────▶│   MedAssist     │────▶│   PostgreSQL     │
+│   (Login)        │     │   API Server     │     │   Database       │
+│                 │◀────│                 │     │   (Users,        │
+└─────────────────┘     └─────────────────┘     │    Sessions)     │
+                                                └─────────────────┘
 ```
+
+**Data Elements:**
+- Email address
+- Password hash (Argon2id)
+- Session tokens
+- Authentication timestamps
+
+### 3. AI Processing Data Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   User           │────▶│   MedAssist     │────▶│   AI Engine      │
+│   (Request)      │     │   API Server     │     │   (Ollama)       │
+│                 │◀────│                 │◀────│                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │   Provenance     │
+                     │   Tracking       │
+                     └─────────────────┘
+```
+
+**Data Elements:**
+- Clinical text (prompt to AI)
+- AI-generated suggestions
+- Provenance metadata (source, model, timestamp)
+
+**Important:** AI processing is performed locally (self-hosted) and data does NOT leave the organization's infrastructure.
+
+### 4. Document Upload Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   User           │────▶│   MedAssist     │────▶│   Filesystem     │
+│   (Upload)       │     │   API Server     │     │   Blob Store     │
+│                 │◀────│                 │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │   PostgreSQL     │
+                     │   (Metadata)     │
+                     └─────────────────┘
+```
+
+**Data Elements:**
+- Document content (stored in filesystem)
+- Document metadata (stored in PostgreSQL)
+- SHA-256 hash (for integrity verification)
+- Provenance information
 
 ---
 
-## Data Retention Policies
+## Data Storage
 
-### 1. Clinical Data
+### PostgreSQL Database
 
-| Data Type | Default Retention | Rationale |
-|-----------|------------------|-----------|
-| Patient records | Indefinite (or per org policy) | Medical records typically have long-term legal requirements |
-| Encounters | Indefinite | Part of patient medical history |
-| Notes (SOAP) | Indefinite | Clinical documentation |
-| Documents/Labs | Indefinite | Supporting clinical evidence |
-| Medications | Indefinite | Treatment history |
-| Allergies | Indefinite | Critical safety information |
-| Vital signs | Indefinite | Clinical observations |
+**Location:** Self-hosted PostgreSQL server (configured via `DATABASE_URL`)
 
-**Note:** Organizations must configure their own retention policies based on:
-- Local regulations (LGPD, HIPAA, etc.)
-- Professional medical record requirements
-- Legal obligations
+**Tables and Data Types:**
 
-### 2. Temporary Data
+| Table | Data Type | Sensitivity | Retention |
+|-------|-----------|-------------|-----------|
+| `patients` | Identification, Clinical | High | Configurable |
+| `encounters` | Clinical | High | Configurable |
+| `notes` | Clinical | High | Configurable |
+| `medications` | Clinical | High | Configurable |
+| `allergies` | Clinical | High | Configurable |
+| `vital_signs` | Clinical | High | Configurable |
+| `documents` | Clinical, Identification | High | Configurable |
+| `transcriptions` | Clinical, Audio | High | Configurable |
+| `users` | Identification, Auth | High | Configurable |
+| `sessions` | Auth | Medium | Session lifetime |
+| `audit_events` | Audit | Medium | Configurable |
+| `organisations` | Identification | Medium | Configurable |
 
-| Data Type | Retention | Automatic Cleanup |
-|-----------|-----------|-------------------|
-| Audio recordings | Configurable (default: 30 days) | Yes, after transcription |
-| Transcription drafts | Until reviewed | Yes, after note creation |
-| Session tokens | 24 hours (configurable) | Yes, on expiry |
-| Job state | Until completion + 7 days | Yes |
-| Audit logs | Configurable (default: 7 years) | Optional |
+### Filesystem Blob Store
 
-### 3. Deletion
+**Location:** Local filesystem (path configurable via `BLOB_STORE_PATH`)
 
-- **Soft Delete:** Clinical data is soft-deleted (marked as inactive) to preserve audit trail
-- **Hard Delete:** Available for temporary data (audio, drafts)
-- **Purging:** Organizations can implement custom purge policies via CLI
+**Data Stored:**
+- Uploaded documents (PDFs, images, etc.)
+- Transcription audio files
+- AI model files (optional)
+
+**Organization:**
+```
+blob-store/
+├── documents/
+│   └── {org_id}/
+│       └── {document_id}.{extension}
+├── transcriptions/
+│   └── {org_id}/
+│       └── {transcription_id}.{extension}
+└── models/
+    └── {model_name}/
+        └── model files
+```
+
+### Logs
+
+**Location:** stdout (containerized) or file
+
+**Log Types:**
+- **Application Logs:** Operational information (INFO, DEBUG, etc.)
+- **Error Logs:** Error conditions and stack traces
+- **Audit Logs:** Sensitive access tracking (separate table)
+
+**Log Retention:**
+- Application logs: Configurable (default: 30 days)
+- Error logs: Configurable (default: 90 days)
+- Audit logs: Configurable (default: 7 years for compliance)
 
 ---
 
-## Technical Privacy Measures
+## Data Protection Measures
 
-### 1. Multi-Tenant Isolation
+### 1. Access Control
 
-**Implementation:**
-- Every clinical table has `org_id UUID NOT NULL`
-- All queries filter by `WHERE org_id = ?`
-- Cross-org access attempts are logged and denied
-- Tests verify cross-org isolation
+**Multi-Tenant Isolation:**
+- Every clinical table has an `org_id` column
+- All queries filter by `org_id` from the authenticated user's session
+- Prevents cross-organization data access
 
-**Guarantees:**
-- Organization A cannot access Organization B's data
-- Even with direct database access, org_id filtering is enforced
-- Audit trail records org_id for all operations
+**Role-Based Access Control (RBAC):**
+- **Admin:** Full access to organization data
+- **Clinician:** Read/write access to clinical data
+- **Patient:** Read-only access to their own data (planned)
 
-### 2. Provenance Tracking
+**Row-Level Security:**
+- Application layer enforces data access rules
+- Future: PostgreSQL Row-Level Security (RLS) policies
 
-**Every piece of clinical data carries:**
-- `ProvenanceKind`: Human, AiSuggestion, Imported, Transcription
-- `SourceRef`: Who/what created it (user_id, job_id, document_id, etc.)
-- `reviewed`: Boolean indicating human review status
-
-**Rules:**
-- AI suggestions can never silently overwrite human edits
-- AI output is always marked as `reviewed: false`
-- Human review is mandatory before finalization
-- Provenance is preserved through all transformations
-
-### 3. Authentication & Authorization
+### 2. Authentication and Authorization
 
 **Password Security:**
-- Argon2id hashing (memory-hard, resistant to GPU attacks)
-- Configurable parameters (iterations, memory, parallelism)
-- Never stored in plaintext
+- **Algorithm:** Argon2id (memory-hard, resistant to GPU attacks)
+- **Parameters:** Default Argon2id parameters (safe defaults)
+- **Storage:** Password hashes only, never plaintext
+- **Salting:** Unique salt per password
 
-**Session Security:**
-- Opaque session tokens (UUID v4)
-- HttpOnly cookies (not accessible to JavaScript)
-- Secure cookies (HTTPS only in production)
-- SameSite=Strict (prevents CSRF)
-- Expiring tokens (configurable TTL)
-- Revocable sessions
+**Session Management:**
+- **Tokens:** Opaque, random session tokens
+- **Storage:** Session tokens stored in PostgreSQL
+- **Expiration:** Configurable session timeout (default: 24 hours)
+- **Lockout:** Temporary lockout after failed login attempts (default: 5 attempts, 15 minutes)
 
-**Lockout:**
-- Failed attempt counter per user
-- Configurable threshold and lockout duration
-- Prevents brute-force attacks
+**Multi-Factor Authentication (Future):**
+- TOTP (Time-based One-Time Password)
+- Hardware security keys (WebAuthn)
 
-### 4. Audit Trail
+### 3. Encryption
 
-**Recorded for every operation:**
-- Actor (user_id, org_id, roles)
-- Action (create, read, update, delete, etc.)
-- Resource type and ID
-- Timestamp (UTC)
-- Outcome (success/failure)
-- Metadata (non-sensitive context)
+**At Rest:**
+- PostgreSQL encryption (delegated to database configuration)
+- Filesystem encryption (delegated to OS/filesystem)
+- Recommendation: Use encrypted volumes for blob store
 
-**NOT recorded:**
-- Full clinical content
-- Credentials or tokens
-- Sensitive personal data
+**In Transit:**
+- **TLS:** Required for all HTTP connections
+- **Certificate Validation:** Strict certificate validation
+- **Cipher Suites:** Modern, secure cipher suites only
 
-### 5. Input Validation
+**Secrets Management:**
+- **Environment Variables:** All secrets stored in environment variables
+- **Never in Code:** Secrets never committed to version control
+- **.env.example:** Template file with placeholder values
+- **Secret Rotation:** Support for secret rotation without downtime
 
-**All inputs are validated:**
-- Domain models validate on construction
-- Service layer enforces business rules
-- API layer validates DTOs
-- Database constraints (FK, unique, not null)
+### 4. Input Validation and Sanitization
 
-**Protects against:**
-- SQL injection (parameterized queries)
-- Path traversal (blob store path sanitization)
-- XSS (proper escaping in responses)
-- CSRF (SameSite cookies, tokens)
-- Overflow (numeric validation)
+**Input Validation:**
+- All external inputs validated at domain layer
+- Type-safe parsing with `serde`
+- Custom validation for clinical data (plausible ranges, etc.)
 
-### 6. Data Minimization
+**Sanitization:**
+- Path sanitization for filesystem operations
+- SQL injection prevention via SQLx parameterized queries
+- XSS prevention via proper HTML escaping (in Web UI)
 
-**Principles:**
-- Only load data needed for the operation
-- Pagination for large result sets
-- Filtering by org_id at database level
-- No bulk exports without explicit authorization
+**File Upload Validation:**
+- File type validation (MIME type and magic bytes)
+- File size limits (configurable, default: 10MB)
+- File name sanitization
+- Virus scanning integration (future)
 
-**Implementation:**
-- Repository methods accept limit/offset parameters
-- Search endpoints return paginated results
-- Related data loaded lazily (not eagerly)
+### 5. Audit Trail
 
----
+**Audit Logging:**
+- All sensitive operations logged
+- Audit events stored in dedicated table
+- Immutable audit trail (no updates or deletions)
 
-## User Rights (LGPD Compliance)
+**Audited Operations:**
+- Patient data access (read, create, update, delete)
+- Clinical data modifications
+- Authentication events (login, logout, failed attempts)
+- Authorization changes (role assignments)
+- Data export operations
 
-### 1. Right to Information (LGPD Art. 18, I)
-
-**Implementation:**
-- Patients can request their data via API (future: patient portal)
-- All data accessible through proper authentication
-- Audit trail shows who accessed what and when
-
-### 2. Right to Correction (LGPD Art. 18, II)
-
-**Implementation:**
-- All clinical data is editable with provenance tracking
-- Amendments create new versions (SOAP note amendments)
-- Original data preserved for audit
-- Correction reason can be recorded
-
-### 3. Right to Deletion (LGPD Art. 18, III)
-
-**Implementation:**
-- Soft delete available for all clinical entities
-- Hard delete available for temporary data
-- Organizations can implement custom deletion policies
-- Deletion requests logged in audit trail
-
-**Limitations:**
-- Legal obligations may prevent deletion (medical records)
-- Deletion may be limited to anonymization in some cases
-
-### 4. Right to Data Portability (LGPD Art. 18, IV)
-
-**Implementation:**
-- JSON export of patient data (future)
-- FHIR export format (future)
-- Structured, machine-readable formats
-
-### 5. Right to Revoke Consent (LGPD Art. 18, V)
-
-**Implementation:**
-- Consent records tracked separately
-- Consent can be revoked via API
-- Revocation logged in audit trail
-- Data collected under revoked consent is preserved (legal requirement) but not used for new processing
-
----
-
-## Clinical Safety Considerations
-
-### 1. AI Assistance Safety
-
-**Principles:**
-- AI is a **support tool**, not a diagnostic tool
-- All AI output is **unreviewed draft** until human confirmation
-- AI can **never** auto-finalize clinical notes
-- AI can **never** silently overwrite human edits
-
-**Guardrails:**
-- Anti-hallucination validation (numbers, dates must be grounded in input)
-- Provenance tracking (clear distinction between human and AI content)
-- Human review mandatory (UI must surface unreviewed sections)
-- Gap flagging (missing information is explicit, not invented)
-
-### 2. Transcription Safety
-
-**Requirements:**
-- Explicit consent required before any recording
-- Consent is separate from general terms of service
-- Consent validity window (configurable, default: 1 year)
-- Consent can be revoked at any time
-- Audio files retained only as long as necessary
-
-**Implementation:**
-- `Consent` entity tracks patient consent
-- `Transcription` entity requires `consent_id`
-- Transcription cannot start without valid consent
-- Consent validation in service layer
-
-### 3. Document Integrity
-
-**Measures:**
-- SHA-256 hash of all uploaded documents
-- Hash stored with document metadata
-- Hash verified on download
-- Original files never modified (immutable storage)
-
-### 4. Audit for Clinical Safety
-
-**Recorded:**
-- Who created/modified clinical data
-- When it was created/modified
-- What was changed (via version history)
-- Whether AI was involved
-- Whether human review occurred
-
----
-
-## Operational Security
-
-### 1. Deployment Security
-
-**Requirements:**
-- Environment variables for all secrets (never in code)
-- Production mode refuses insecure defaults
-- TLS termination at reverse proxy
-- Database encryption at rest (recommended)
-- Regular backups with encryption
-
-**Configuration:**
-```bash
-# Required environment variables
-DATABASE_URL=postgres://user:password@host:port/db
-MEDASSIST_BIND=0.0.0.0:8080
-MEDASSIST_ENV=production
-MEDASSIST_BLOB_DIR=/var/lib/medassist/blobs
-
-# Optional
-MEDASSIST_LLM_ID=ollama:qwen2.5:7b
-MEDASSIST_LLM_EXTERNAL=false
+**Audit Event Structure:**
+```rust
+pub struct AuditEvent {
+    pub id: Uuid,
+    pub org_id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub event_type: AuditEventType,
+    pub entity_type: String,
+    pub entity_id: Option<Uuid>,
+    pub action: String,
+    pub timestamp: DateTime<Utc>,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub metadata: JsonValue,
+}
 ```
 
-### 2. Network Security
-
-**Requirements:**
-- Firewall rules limiting access to API port
-- Database not exposed to public internet
-- AI providers (if used) configured with proper authentication
-- Rate limiting on API endpoints
-
-### 3. Incident Response
-
-**Data Breach Procedures:**
-1. Contain the breach (isolate affected systems)
-2. Assess scope (what data was accessed)
-3. Notify affected individuals (within LGPD timeline: "promptly")
-4. Notify authorities (ANPD within 2 business days for severe breaches)
-5. Investigate and remediate root cause
-6. Document incident and response
+**Important:** Audit logs do NOT contain the actual clinical data, only metadata about the operation.
 
 ---
 
-## Compliance Checklist
+## LGPD Compliance
 
-### LGPD (Brazil)
+### Legal Basis for Processing
 
-- [x] Lawful basis for processing (consent, contract, legal obligation)
-- [x] Data minimization (only collect what's necessary)
-- [x] Purpose limitation (data used only for stated purposes)
-- [x] Storage limitation (retention policies configurable)
-- [x] Data subject rights (access, correction, deletion, portability)
-- [x] Security measures (encryption, access control, audit)
-- [x] Data processing records (audit trail)
-- [ ] DPO appointment (required for some organizations)
-- [ ] DPIA for high-risk processing (recommended for healthcare)
+MedAssist OSS processes personal data under the following legal bases (as defined by LGPD):
 
-### HIPAA (USA - if applicable)
+| Processing Activity | Legal Basis | Article |
+|---------------------|-------------|---------|
+| Clinical documentation | Consent | Art. 11 |
+| Patient identification | Consent | Art. 11 |
+| Authentication | Legitimate interest | Art. 10 |
+| Audit logging | Legal obligation | Art. 7, II |
+| System operation | Legitimate interest | Art. 10 |
 
-- [ ] Business Associate Agreements (if hosting for US clients)
-- [ ] PHI safeguards
-- [ ] Breach notification procedures
+**Note:** The data controller (organization using MedAssist OSS) is responsible for:
+1. Obtaining appropriate consent from data subjects
+2. Providing privacy notices
+3. Honoring data subject rights
+4. Maintaining records of processing activities
 
-### GDPR (EU - if applicable)
+### Data Subject Rights
 
-- [ ] DPO appointment (if processing EU resident data)
-- [ ] Data processing agreements
-- [ ] Right to be forgotten implementation
+MedAssist OSS provides technical capabilities to support data subject rights:
 
----
+| Right | Implementation | Status |
+|-------|----------------|--------|
+| **Access** | API endpoints for data retrieval | ✅ Implemented |
+| **Rectification** | Update endpoints for data correction | ✅ Implemented |
+| **Erasure** | Soft deletion with configurable retention | ✅ Implemented |
+| **Restriction** | Data access controls | ✅ Implemented |
+| **Portability** | Data export capabilities | ⏳ Planned |
+| **Objection** | Configurable processing preferences | ⏳ Planned |
+| **Automated Decision-Making** | Human-in-the-loop for all AI | ✅ Implemented |
 
-## Data Subject Requests
+### Data Protection Officer (DPO)
 
-### Handling a Request
+Organizations using MedAssist OSS should designate a Data Protection Officer (DPO) responsible for:
+- Monitoring compliance with LGPD
+- Advising on data protection impact assessments
+- Serving as contact point for data subjects and supervisory authorities
 
-1. **Verify Identity:** Confirm requester is the data subject or authorized representative
-2. **Log Request:** Record in audit trail
-3. **Process Request:**
-   - Access: Provide data in readable format
-   - Correction: Allow edits with provenance
-   - Deletion: Soft-delete with audit preservation
-   - Portability: Export in structured format
-   - Consent Revocation: Mark consent as revoked
-4. **Respond:** Within LGPD timeline (15 days, extendable to 15 more)
-5. **Document:** Record response in audit trail
+MedAssist OSS provides audit capabilities to assist the DPO in their duties.
 
-### Automation (Future)
+### Data Protection Impact Assessment (DPIA)
 
-- Self-service patient portal for data access
-- Automated export generation
-- Consent management interface
+Organizations should conduct a DPIA before deploying MedAssist OSS, considering:
+- The nature, scope, context, and purposes of processing
+- The risks to data subjects' rights and freedoms
+- The measures to address risks and demonstrate compliance
 
----
-
-## Third-Party Data Processing
-
-### 1. AI Model Providers
-
-**If using remote AI providers:**
-- Explicit opt-in required
-- Data processing agreement recommended
-- Patient consent for data leaving deployment boundary
-- Clear disclosure of what data is sent
-
-**Local AI (Recommended):**
-- No data leaves deployment boundary
-- No third-party processing
-- Full control over data
-
-### 2. Cloud Hosting
-
-**If self-hosted:**
-- Full control over data
-- Responsible for all compliance
-
-**If using cloud provider:**
-- Data processing agreement required
-- Verify cloud provider's compliance certifications
-- Encrypt data at rest and in transit
-- Consider jurisdiction of data storage
+MedAssist OSS provides documentation and technical measures to support DPIA completion.
 
 ---
 
-## Training and Awareness
+## Security Measures
 
-### For Developers
+### 1. Network Security
 
-- Privacy-by-design principles
-- LGPD requirements
-- Secure coding practices
+**TLS Configuration:**
+- Minimum TLS version: 1.2 (recommended: 1.3)
+- Cipher suites: Modern, secure suites only
+- Certificate validation: Strict (no self-signed in production)
+
+**Firewall Rules:**
+- Restrict API access to authorized networks
+- Rate limiting at network level
+- DDoS protection (recommended)
+
+### 2. Application Security
+
+**OWASP Top 10 Mitigations:**
+
+| Risk | Mitigation | Status |
+|------|------------|--------|
+| Injection | Parameterized queries (SQLx), input validation | ✅ |
+| Broken Authentication | Strong password hashing, session management | ✅ |
+| Sensitive Data Exposure | Encryption, no plaintext secrets | ✅ |
+| XML External Entities | Not applicable (no XML parsing) | N/A |
+| Broken Access Control | RBAC, multi-tenant isolation | ✅ |
+| Security Misconfiguration | Secure defaults, configuration validation | ✅ |
+| Cross-Site Scripting (XSS) | HTML escaping (Web UI) | ⏳ Planned |
+| Insecure Deserialization | Safe deserialization with serde | ✅ |
+| Using Components with Known Vulnerabilities | Dependency scanning (cargo-deny) | ✅ |
+| Insufficient Logging & Monitoring | Comprehensive audit logging | ✅ |
+
+**Additional Measures:**
+- CSRF protection (Web UI)
+- CORS configuration
+- Content Security Policy (CSP)
+- Security headers
+
+### 3. Database Security
+
+**PostgreSQL Configuration:**
+- Separate database user with limited privileges
+- No superuser access for application
+- Connection pooling with limits
+- Query timeouts
+
+**Backup and Recovery:**
+- Regular backups (recommended: daily)
+- Encrypted backups
+- Offsite backup storage
+- Tested recovery procedures
+
+### 4. Operational Security
+
+**Access Management:**
+- Principle of least privilege
+- Regular access reviews
+- Immediate revocation of access for terminated users
+
+**Incident Response:**
+- Incident detection and alerting
 - Incident response procedures
+- Breach notification requirements (LGPD: 2 business days for authority, reasonable time for data subjects)
 
-### For Users (Healthcare Professionals)
+**Business Continuity:**
+- Disaster recovery plan
+- Backup and restore testing
+- Failover capabilities (future)
 
-- AI is a support tool, not a replacement for judgment
-- Human review is mandatory for all AI output
-- Provenance indicates source of all information
-- Audit trail tracks all access and changes
+---
+
+## Data Retention and Deletion
+
+### Retention Policies
+
+| Data Type | Default Retention | Configurable | Legal Requirement |
+|-----------|-------------------|--------------|------------------|
+| Clinical Data | 20 years | Yes | LGPD, medical records laws |
+| Patient Identification | 20 years | Yes | LGPD, medical records laws |
+| Authentication Data | 1 year (inactive) | Yes | LGPD |
+| Session Data | Session lifetime | Yes | Operational |
+| Audit Logs | 7 years | Yes | LGPD, compliance |
+| Documents | 20 years | Yes | Medical records laws |
+| Transcriptions | 20 years | Yes | Medical records laws |
+
+**Note:** Retention periods may vary by jurisdiction and should be configured according to local legal requirements.
+
+### Deletion Procedures
+
+**Soft Deletion:**
+- Data marked as deleted but not physically removed
+- Can be restored within retention period
+- Audit trail preserved
+
+**Hard Deletion:**
+- Physical removal of data after retention period
+- Automated cleanup processes
+- Manual deletion for data subject requests
+
+**Deletion Workflow:**
+1. User requests deletion (via API or admin interface)
+2. System validates request (authentication, authorization)
+3. System performs soft deletion
+4. System schedules hard deletion (after retention period)
+5. System logs deletion in audit trail
+6. System notifies requester of completion
+
+---
+
+## Third-Party Services
+
+### AI Models and Services
+
+**Important:** MedAssist OSS is designed for **local-first AI inference** to minimize data exposure.
+
+| Service | Data Location | Data Shared | Sensitivity |
+|---------|---------------|-------------|-------------|
+| Ollama (Local) | Self-hosted | No external sharing | None (local) |
+| Test Double | In-process | No external sharing | None (test data only) |
+| Future: Cloud AI | External provider | Potentially shared | High (requires assessment) |
+
+**Recommendation:** Use local AI models (Ollama) to keep all data within your infrastructure.
+
+### Dependencies
+
+All dependencies are audited for:
+- License compatibility (GPL-3.0-or-later)
+- Security vulnerabilities (cargo-deny)
+- Privacy implications
+
+See `THIRD_PARTY_LICENSES.md` for complete dependency list.
+
+---
+
+## User Responsibilities
+
+### System Administrators
+
+- Configure appropriate access controls
+- Implement backup and recovery procedures
+- Monitor system logs and alerts
+- Keep software up to date
+- Conduct regular security audits
+
+### Healthcare Professionals
+
+- Verify AI-generated suggestions before use
+- Maintain patient confidentiality
+- Use appropriate authentication credentials
+- Report suspicious activity
+- Follow organizational data handling policies
+
+### Patients (Future)
+
+- Provide accurate information
+- Review and correct their data as needed
+- Use strong, unique passwords
+- Report privacy concerns
+
+---
+
+## Privacy by Design Checklist
+
+- [x] Data minimization implemented
+- [x] Purpose limitation documented
+- [x] Multi-tenant isolation enforced
+- [x] Access controls implemented
+- [x] Authentication and authorization secure
+- [x] Audit trail comprehensive
+- [x] Encryption at rest (delegated)
+- [x] Encryption in transit (TLS)
+- [x] Input validation and sanitization
+- [x] Secure defaults
+- [x] Human-in-the-loop for AI
+- [x] Provenance tracking
+- [x] Immutable audit logs
+- [ ] Data portability implemented
+- [ ] Data subject rights fully supported
+- [ ] Privacy impact assessment template
+- [ ] Incident response procedures documented
+
+---
+
+## Limitations and Disclaimers
+
+### Not Legal Advice
+
+This document describes the technical implementation of privacy and data protection measures in MedAssist OSS. It does NOT constitute legal advice. Organizations using MedAssist OSS should:
+
+1. Consult with legal counsel to ensure compliance with applicable laws
+2. Conduct their own privacy impact assessments
+3. Implement additional measures as required by their specific use case and jurisdiction
+
+### Not Certified
+
+MedAssist OSS is NOT certified for:
+- HIPAA compliance (US)
+- GDPR compliance (EU)
+- LGPD compliance (Brazil)
+- Any other regulatory compliance
+
+Certification requires independent audit and verification, which is the responsibility of the deploying organization.
+
+### Not for Production Use Without Review
+
+MedAssist OSS is open-source software provided "as is" without warranty. Before deploying to production:
+
+1. Conduct a thorough security review
+2. Perform penetration testing
+3. Validate all privacy and security controls
+4. Implement appropriate operational procedures
+5. Obtain necessary certifications and approvals
+
+### AI Limitations
+
+- AI output is NOT guaranteed to be accurate
+- AI output must ALWAYS be reviewed by a qualified healthcare professional
+- AI output should NOT be used as the sole basis for clinical decisions
+- MedAssist OSS is a tool to assist healthcare professionals, not replace them
 
 ---
 
 ## References
 
-- [LGPD (Lei Geral de Proteção de Dados)](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/L13709.htm)
-- [ANPD (Autoridade Nacional de Proteção de Dados)](https://www.gov.br/anpd/pt-br)
-- [GDPR (General Data Protection Regulation)](https://gdpr-info.eu/)
-- [HIPAA (Health Insurance Portability and Accountability Act)](https://www.hhs.gov/hipaa/index.html)
-- [ISO 27001 (Information Security Management)](https://www.iso.org/isoiec-27001-information-security.html)
-- [WCAG 2.2 AA (Accessibility)](https://www.w3.org/WAI/standards-guidelines/wcag/)
+- [LGPD - Lei Geral de Proteção de Dados (Brazil)](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/L13709.htm)
+- [GDPR - General Data Protection Regulation (EU)](https://gdpr-info.eu/)
+- [HIPAA - Health Insurance Portability and Accountability Act (US)](https://www.hhs.gov/hipaa/index.html)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
+- [ISO/IEC 27001](https://www.iso.org/isoiec-27001-information-security.html)
+
+---
+
+## Document History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | 2026-10-16 | MedAssist OSS Contributors | Initial privacy documentation |

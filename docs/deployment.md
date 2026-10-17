@@ -1,299 +1,744 @@
 # MedAssist OSS - Deployment Guide
 
 **License:** GPL-3.0-or-later  
-**Version:** 0.1.0  
+**Status:** Work in Progress  
 **Last Updated:** 2026-10-16
 
 ---
 
 ## Overview
 
-This guide covers deployment options for MedAssist OSS, from local development to production self-hosting.
+This guide provides comprehensive instructions for deploying MedAssist OSS in various environments, from local development to production. MedAssist OSS is designed for **self-hosting**, giving you full control over your data and infrastructure.
+
+**Target Audience:**
+- System administrators
+- DevOps engineers
+- Healthcare IT professionals
+- Developers
 
 ---
 
 ## Prerequisites
 
-### System Requirements
+### Hardware Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| **OS** | Linux, macOS | Linux (Ubuntu 22.04+, Debian 12+) |
-| **CPU** | 2 cores | 4+ cores |
-| **RAM** | 2 GB | 4+ GB (8+ GB for AI inference) |
-| **Disk** | 10 GB | 50+ GB (for blobs, AI models) |
-| **Rust** | 1.75+ | Latest stable |
-| **PostgreSQL** | 14+ | 15+ |
+| Component | Minimum | Recommended | Production |
+|-----------|---------|-------------|------------|
+| **CPU** | 2 cores | 4 cores | 8+ cores |
+| **RAM** | 4 GB | 8 GB | 16+ GB |
+| **Storage** | 20 GB | 50 GB | 100+ GB (SSD) |
+| **Network** | 100 Mbps | 1 Gbps | 1 Gbps+ |
 
-### Required Tools
+### Software Requirements
 
-- [Rust](https://rustup.rs/) - Language and toolchain
-- [PostgreSQL](https://www.postgresql.org/) - Database
-- [Git](https://git-scm.com/) - Version control
-- [Docker](https://www.docker.com/) or [Podman](https://podman.io/) - Container runtime (optional)
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **Operating System** | Linux (x86_64) | Ubuntu 22.04 LTS, Debian 12, or equivalent |
+| **Rust** | 1.75+ | [Install Rust](https://www.rust-lang.org/tools/install) |
+| **PostgreSQL** | 14+ | [Install PostgreSQL](https://www.postgresql.org/download/) |
+| **Git** | 2.30+ | [Install Git](https://git-scm.com/downloads) |
+| **Docker** (optional) | 20.10+ | For containerized deployment |
+| **Podman** (optional) | 4.0+ | Docker alternative |
+
+### Knowledge Requirements
+
+- Basic Linux system administration
+- PostgreSQL administration
+- Rust/Cargo build system
+- Network configuration
+- Security best practices
 
 ---
 
-## Installation
+## Installation Methods
 
-### 1. Clone Repository
+Choose the installation method that best fits your environment:
+
+| Method | Complexity | Use Case | Notes |
+|--------|------------|----------|-------|
+| **Source** | Medium | Development, Production | Full control, custom configuration |
+| **Docker** | Easy | Development, Production | Containerized, reproducible |
+| **Docker Compose** | Easy | Development, Production | Multi-container, easy setup |
+| **Kubernetes** | High | Production (Future) | Scalable, highly available |
+
+---
+
+## Method 1: Source Installation
+
+### Step 1: Clone the Repository
 
 ```bash
 # Clone the repository
 git clone https://github.com/Lucasovski/MEDASSIST-OSS.git
 cd MEDASSIST-OSS
 
-# Check out the latest release or main branch
+# Check out the latest stable version
 git checkout main
 ```
 
-### 2. Install Rust Toolchain
+### Step 2: Install Rust Toolchain
 
 ```bash
-# Install rustup (if not already installed)
+# Install Rust (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Use the project's toolchain
-rustup show  # Should show stable with rustfmt, clippy
+# Add Rust to PATH
+source "$HOME/.cargo/env"
 
-# If toolchain is not installed:
-rustup install stable
-rustup component add rustfmt clippy
+# Verify installation
+rustc --version
+cargo --version
 ```
 
-### 3. Configure Environment
+### Step 3: Install PostgreSQL
 
-```bash
-# Copy example configuration
-cp .env.example .env
-
-# Edit .env with your settings
-nano .env  # or use your preferred editor
-```
-
-**Required Environment Variables:**
-
-```bash
-# Database connection
-DATABASE_URL=postgres://medassist:your-strong-password@localhost:5432/medassist
-
-# Server configuration
-MEDASSIST_BIND=127.0.0.1:8080
-MEDASSIST_ENV=development  # or "production"
-
-# Blob storage
-MEDASSIST_BLOB_DIR=/var/lib/medassist/blobs
-
-# Create blob directory
-mkdir -p /var/lib/medassist/blobs
-chown -R $USER:$USER /var/lib/medassist/blobs
-```
-
-### 4. Install PostgreSQL
-
-#### Option A: Docker
-
-```bash
-# Run PostgreSQL container
-docker run -d \
-  --name medassist-pg \
-  -e POSTGRES_USER=medassist \
-  -e POSTGRES_PASSWORD=your-strong-password \
-  -e POSTGRES_DB=medassist \
-  -p 127.0.0.1:5432:5432 \
-  -v medassist_pg_data:/var/lib/postgresql/data \
-  postgres:15-alpine
-
-# Verify it's running
-docker exec medassist-pg psql -U medassist -c "SELECT version();"
-```
-
-#### Option B: Native Installation (Ubuntu/Debian)
+#### Ubuntu/Debian:
 
 ```bash
 # Install PostgreSQL
 sudo apt update
-sudo apt install postgresql postgresql-contrib
+sudo apt install -y postgresql postgresql-contrib
 
-# Create user and database
-sudo -u postgres psql -c "CREATE USER medassist WITH PASSWORD 'your-strong-password';"
-sudo -u postgres psql -c "CREATE DATABASE medassist OWNER medassist;"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE medassist TO medassist;"
+# Start PostgreSQL service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 
-# Enable in pg_hba.conf (for local development)
-echo "host    medassist    medassist    127.0.0.1/32    md5" | sudo tee -a /etc/postgresql/*/main/pg_hba.conf
+# Verify installation
+sudo -u postgres psql --version
+```
+
+#### CentOS/RHEL:
+
+```bash
+# Install PostgreSQL
+sudo dnf install -y postgresql-server postgresql-contrib
+
+# Initialize database
+sudo postgresql-setup --initdb
+
+# Start PostgreSQL service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+```
+
+### Step 4: Configure PostgreSQL
+
+#### Create Database and User:
+
+```bash
+# Switch to postgres user
+sudo -u postgres psql
+
+-- Create database
+CREATE DATABASE medassist;
+
+-- Create user
+CREATE USER medassist WITH PASSWORD 'secure_password_here';
+
+-- Grant privileges
+GRANT ALL PRIVILEGES ON DATABASE medassist TO medassist;
+
+-- Exit
+\q
+```
+
+#### Configure PostgreSQL for Production:
+
+Edit `/etc/postgresql/14/main/postgresql.conf` (path may vary):
+
+```ini
+# Connection settings
+max_connections = 100
+shared_buffers = 4GB
+effective_cache_size = 12GB
+maintenance_work_mem = 1GB
+work_mem = 16MB
+
+# Security
+ssl = on
+ssl_cert_file = '/etc/ssl/certs/ssl-cert-snakeoil.pem'
+ssl_key_file = '/etc/ssl/private/ssl-cert-snakeoil.key'
+
+# Logging
+logging_collector = on
+log_directory = '/var/log/postgresql'
+log_statement = 'all'
+```
+
+Edit `/etc/postgresql/14/main/pg_hba.conf`:
+
+```ini
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+# Admin access
+local   all             postgres                                peer
+
+# Local connections
+local   medassist       medassist                              md5
+
+# Remote connections (adjust as needed)
+host    medassist       medassist      127.0.0.1/32            md5
+host    medassist       medassist      ::1/128                 md5
+
+# For production, restrict to specific IPs
+host    medassist       medassist      192.168.1.0/24          md5
+```
+
+Restart PostgreSQL:
+
+```bash
 sudo systemctl restart postgresql
 ```
 
----
-
-## Database Setup
-
-### Apply Migrations
+### Step 5: Build MedAssist OSS
 
 ```bash
-# Install sqlx-cli (if not already installed)
-cargo install sqlx-cli --no-default-features --features postgres
+# Build in release mode
+cargo build --release --workspace
 
-# Apply migrations
-cargo run -p medassist-cli -- migrate
-
-# Or use sqlx directly
-sqlx database setup
-sqlx migrate run
+# Verify build
+ls -lh target/release/medassist-api
+target/release/medassist-cli
 ```
 
-### Verify Database
+### Step 6: Configure Environment
+
+Create `.env` file in the project root:
 
 ```bash
-# Connect to database
-psql postgresql://medassist:your-strong-password@localhost:5432/medassist
+# Copy example file
+cp .env.example .env
 
-# List tables
-\dt
-
-# Check schema version
-SELECT * FROM _sqlx_migrations;
+# Edit .env file
+nano .env
 ```
 
----
+Example `.env` file:
 
-## Running the Application
+```ini
+# Database configuration
+DATABASE_URL=postgres://medassist:secure_password_here@localhost:5432/medassist
 
-### Development Mode
+# Application configuration
+RUST_LOG=info
+SECRET_KEY=generate_a_secure_random_key_here
+PORT=3000
+HOST=0.0.0.0
+MAX_CONNECTIONS=10
+
+# AI configuration (optional)
+OLLAMA_URL=http://localhost:11434
+
+# Blob store configuration
+BLOB_STORE_PATH=./data/blob-store
+```
+
+**Generate a secure secret key:**
+
+```bash
+# Generate a 32-byte random key
+openssl rand -base64 32
+```
+
+### Step 7: Initialize Database
+
+```bash
+# Run migrations
+./target/release/medassist-cli migrate
+
+# Or create database and run migrations
+./target/release/medassist-cli setup
+```
+
+### Step 8: Create Administrator User
+
+```bash
+# Create admin user
+./target/release/medassist-cli create-admin \
+    --org-name "My Healthcare Organization" \
+    --email admin@example.com \
+    --password "secure_admin_password" \
+    --display-name "Admin User"
+```
+
+### Step 9: Run the Application
 
 ```bash
 # Run API server
-cargo run -p medassist-api
+./target/release/medassist-api
 
-# In another terminal, run CLI (if needed)
-cargo run -p medassist-cli
+# Or with custom configuration
+RUST_LOG=debug ./target/release/medassist-api
 ```
 
-### Production Mode
+### Step 10: Verify Installation
 
 ```bash
-# Build release binary
-cargo build --release -p medassist-api
+# Check health endpoint
+curl http://localhost:3000/healthz
 
-# Run with production configuration
-MEDASSIST_ENV=production ./target/release/medassist-api
-```
+# Check readiness endpoint (requires DB connection)
+curl http://localhost:3000/readyz
 
-### Verify It's Running
-
-```bash
-# Check health
-curl http://127.0.0.1:8080/healthz
-# Expected: {"status":"ok","version":"0.1.0"}
-
-# Check readiness (requires DB connection)
-curl http://127.0.0.1:8080/readyz
-# Expected: HTTP 200 if DB is reachable
+# Login with admin credentials
+curl -X POST http://localhost:3000/login \
+    -H "Content-Type: application/json" \
+    -d '{"email": "admin@example.com", "password": "secure_admin_password"}'
 ```
 
 ---
 
-## Docker Deployment
+## Method 2: Docker Installation
 
-### Build Docker Image
+### Prerequisites
+
+- Docker 20.10+
+- Docker Compose 2.0+
+
+### Step 1: Clone the Repository
 
 ```bash
-# Create Dockerfile (see below for example)
-# Build image
-docker build -t medassist-oss:latest .
-
-# Run container
-docker run -d \
-  --name medassist \
-  -p 8080:8080 \
-  -e DATABASE_URL=postgres://medassist:password@host.docker.internal:5432/medassist \
-  -e MEDASSIST_BIND=0.0.0.0:8080 \
-  -e MEDASSIST_ENV=production \
-  -e MEDASSIST_BLOB_DIR=/data/blobs \
-  -v medassist_blobs:/data/blobs \
-  medassist-oss:latest
+git clone https://github.com/Lucasovski/MEDASSIST-OSS.git
+cd MEDASSIST-OSS
 ```
 
-### Example Dockerfile
+### Step 2: Create Docker Compose File
+
+Create `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: medassist-postgres
+    environment:
+      POSTGRES_DB: medassist
+      POSTGRES_USER: medassist
+      POSTGRES_PASSWORD: secure_password_here
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medassist -d medassist"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # MedAssist API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: medassist-api
+    environment:
+      DATABASE_URL: postgres://medassist:secure_password_here@postgres:5432/medassist
+      SECRET_KEY: generate_a_secure_random_key_here
+      RUST_LOG: info
+      PORT: 3000
+      HOST: 0.0.0.0
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # MedAssist CLI (for initialization)
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    container_name: medassist-cli
+    environment:
+      DATABASE_URL: postgres://medassist:secure_password_here@postgres:5432/medassist
+    volumes:
+      - ./migrations:/app/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Run once for initialization
+    command: ["/app/medassist-cli", "setup"]
+
+  # Ollama for AI (optional)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: medassist-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # GPU support (uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  postgres_data:
+  ollama_data:
+```
+
+### Step 3: Create Dockerfiles
+
+Create `Dockerfile.api`:
 
 ```dockerfile
 # Build stage
-FROM rust:1.75-slim as builder
+FROM rust:1.75-slim AS builder
 
-WORKDIR /usr/src/medassist
+WORKDIR /app
+
+# Copy source code
 COPY . .
-RUN apt-get update && apt-get install -y pkg-config libssl-dev
+
+# Build release binary
 RUN cargo build --release -p medassist-api
 
 # Runtime stage
 FROM debian:12-slim
 
+WORKDIR /app
+
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
     libssl3 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary
-COPY --from=builder /usr/src/medassist/target/release/medassist-api /usr/local/bin/
+# Copy binary from build stage
+COPY --from=builder /app/target/release/medassist-api .
 
-# Create blob directory
-RUN mkdir -p /data/blobs
-VOLUME ["/data/blobs"]
+# Copy migrations
+COPY --from=builder /app/migrations ./migrations
 
-# Set non-root user
-RUN useradd -r -s /bin/false medassist
+# Create non-root user
+RUN useradd -r -u 1000 -g 1000 medassist
 USER medassist
-WORKDIR /data
 
-# Expose port
-EXPOSE 8080
+EXPOSE 3000
 
-# Run
-CMD ["medassist-api"]
+CMD ["./medassist-api"]
 ```
 
-### Docker Compose
+Create `Dockerfile.cli`:
+
+```dockerfile
+# Build stage
+FROM rust:1.75-slim AS builder
+
+WORKDIR /app
+
+# Copy source code
+COPY . .
+
+# Build release binary
+RUN cargo build --release -p medassist-cli
+
+# Runtime stage
+FROM debian:12-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy binary from build stage
+COPY --from=builder /app/target/release/medassist .
+
+# Create non-root user
+RUN useradd -r -u 1000 -g 1000 medassist
+USER medassist
+
+CMD ["./medassist"]
+```
+
+### Step 4: Build and Start Containers
+
+```bash
+# Build containers
+docker-compose build
+
+# Start services
+docker-compose up -d postgres
+
+# Wait for PostgreSQL to be ready
+docker-compose logs -f postgres
+
+# Run database setup (one-time)
+docker-compose run --rm cli
+
+# Start API server
+docker-compose up -d api
+
+# Start Ollama (optional)
+docker-compose up -d ollama
+```
+
+### Step 5: Create Administrator User
+
+```bash
+# Run CLI command to create admin
+docker-compose run --rm cli create-admin \
+    --org-name "My Healthcare Organization" \
+    --email admin@example.com \
+    --password "secure_admin_password" \
+    --display-name "Admin User"
+```
+
+### Step 6: Verify Installation
+
+```bash
+# Check health endpoint
+curl http://localhost:3000/healthz
+
+# Check readiness endpoint
+curl http://localhost:3000/readyz
+```
+
+---
+
+## Method 3: Docker Compose (Development)
+
+For development purposes, use the provided `docker-compose.dev.yml`:
 
 ```yaml
 version: '3.8'
 
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:14-alpine
+    container_name: medassist-postgres-dev
     environment:
-      POSTGRES_USER: medassist
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: medassist
+      POSTGRES_USER: medassist
+      POSTGRES_PASSWORD: dev_password
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - postgres_dev_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U medassist"]
+      test: ["CMD-SHELL", "pg_isready -U medassist -d medassist"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  medassist:
-    build: .
-    environment:
-      DATABASE_URL: postgres://medassist:${POSTGRES_PASSWORD:-change-me}@postgres:5432/medassist
-      MEDASSIST_BIND: 0.0.0.0:8080
-      MEDASSIST_ENV: production
-      MEDASSIST_BLOB_DIR: /data/blobs
-    volumes:
-      - blob_data:/data/blobs
+  ollama:
+    image: ollama/ollama:latest
+    container_name: medassist-ollama-dev
     ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "11434:11434"
+    volumes:
+      - ollama_dev_data:/root/.ollama
 
 volumes:
-  pg_data:
-  blob_data:
+  postgres_dev_data:
+  ollama_dev_data:
+```
+
+Start development services:
+
+```bash
+# Start PostgreSQL and Ollama
+docker-compose -f docker-compose.dev.yml up -d
+
+# In another terminal, run the application
+cargo run -p medassist-api
+```
+
+---
+
+## Production Deployment
+
+### Recommended Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Production Environment                     │
+│                                                                  │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
+│  │   Client     │    │   Reverse    │    │   MedAssist     │  │
+│  │  (Browser)   │───▶│   Proxy      │───▶│   API Server     │  │
+│  └─────────────┘    │  (Nginx)     │    │                 │  │
+│                     └────────┬────────┘    └────────┬────────┘  │
+│                              │                         │              │
+│                     ┌────────▼────────┐            ┌─────▼─────┐  │
+│                     │   PostgreSQL     │            │  Ollama    │  │
+│                     │   (Primary)      │            │  (Optional)│  │
+│                     └─────────────────┘            └─────────────┘  │
+│                                                                  │
+│                     ┌─────────────────────────────────────────────┐│
+│                     │              Backup Storage                 ││
+│                     │  (Encrypted, Offsite)                         ││
+│                     └─────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Reverse Proxy Configuration (Nginx)
+
+Create `/etc/nginx/sites-available/medassist`:
+
+```nginx
+upstream medassist_api {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name medassist.yourdomain.com;
+
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/medassist.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/medassist.yourdomain.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" always;
+
+    # Rate Limiting
+    limit_req_zone $binary_remote_addr zone=medassist:10m rate=10r/s;
+    limit_req zone=medassist burst=20 nodelay;
+
+    # Proxy Configuration
+    location / {
+        proxy_pass http://medassist_api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    # Health checks (bypass auth)
+    location /healthz {
+        proxy_pass http://medassist_api/healthz;
+        access_log off;
+    }
+
+    location /readyz {
+        proxy_pass http://medassist_api/readyz;
+        access_log off;
+    }
+
+    # Static files (future Web UI)
+    location /static/ {
+        alias /var/www/medassist/static/;
+        expires 30d;
+        access_log off;
+    }
+}
+
+# HTTP to HTTPS redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name medassist.yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/medassist /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### Systemd Service Files
+
+Create `/etc/systemd/system/medassist-api.service`:
+
+```ini
+[Unit]
+Description=MedAssist OSS API Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=medassist
+Group=medassist
+WorkingDirectory=/opt/medassist
+EnvironmentFile=/opt/medassist/.env
+ExecStart=/opt/medassist/medassist-api
+Restart=always
+RestartSec=5
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/medassist/data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Create `/etc/systemd/system/medassist-ollama.service` (optional):
+
+```ini
+[Unit]
+Description=Ollama AI Server
+After=network.target
+
+[Service]
+Type=simple
+User=medassist
+Group=medassist
+WorkingDirectory=/opt/medassist
+ExecStart=/usr/bin/ollama serve
+Restart=always
+RestartSec=5
+
+# GPU support (if available)
+Environment="OLLAMA_ORIGINS=*"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start services:
+
+```bash
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable services
+sudo systemctl enable medassist-api.service
+sudo systemctl enable medassist-ollama.service
+
+# Start services
+sudo systemctl start medassist-api.service
+sudo systemctl start medassist-ollama.service
+
+# Check status
+sudo systemctl status medassist-api.service
+sudo systemctl status medassist-ollama.service
 ```
 
 ---
@@ -304,361 +749,170 @@ volumes:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | - | Yes |
-| `MEDASSIST_BIND` | Server address to bind to | `127.0.0.1:8080` | Yes |
-| `MEDASSIST_ENV` | Environment mode | `development` | Yes |
-| `MEDASSIST_BLOB_DIR` | Blob storage directory | - | Yes |
-| `MEDASSIST_LLM_ID` | AI model identifier | `test-double` | No |
-| `MEDASSIST_LLM_EXTERNAL` | Whether AI sends data externally | `false` | No |
+| `DATABASE_URL` | PostgreSQL connection URL | - | Yes |
+| `RUST_LOG` | Logging level | `info` | No |
+| `SECRET_KEY` | Session signing key (32+ bytes) | - | Yes |
+| `PORT` | API server port | `3000` | No |
+| `HOST` | API server host | `0.0.0.0` | No |
+| `MAX_CONNECTIONS` | DB connection pool size | `10` | No |
+| `OLLAMA_URL` | Ollama API URL | `http://localhost:11434` | No |
+| `BLOB_STORE_PATH` | Filesystem blob store path | `./data/blob-store` | No |
 
-### PostgreSQL Connection String Format
+### PostgreSQL Connection URL Format
 
 ```
-postgres://USER:PASSWORD@HOST:PORT/DATABASE
+postgres://username:password@host:port/database
 ```
 
 Examples:
-- Local development: `postgres://medassist:password@localhost:5432/medassist`
-- Docker: `postgres://medassist:password@postgres:5432/medassist`
-- Production: `postgres://medassist:${DB_PASSWORD}@db.example.com:5432/medassist?sslmode=require`
+- Local: `postgres://medassist:password@localhost:5432/medassist`
+- Remote: `postgres://medassist:password@192.168.1.100:5432/medassist`
+- With SSL: `postgres://medassist:password@localhost:5432/medassist?sslmode=require`
 
-### Development vs Production Mode
+### Logging Levels
 
-| Setting | Development | Production |
-|---------|-------------|------------|
-| Allows insecure defaults | Yes | No |
-| Requires all config | No | Yes |
-| Detailed error messages | Yes | No (generic) |
-| Logging level | Debug | Info |
-
----
-
-## Reverse Proxy Configuration
-
-### Nginx Example
-
-```nginx
-server {
-    listen 80;
-    server_name medassist.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name medassist.example.com;
-
-    ssl_certificate /etc/letsencrypt/live/medassist.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/medassist.example.com/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Cookie $http_cookie;
-
-        # WebSocket support (future)
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # Health checks
-    location /healthz {
-        proxy_pass http://127.0.0.1:8080/healthz;
-        access_log off;
-    }
-
-    location /readyz {
-        proxy_pass http://127.0.0.1:8080/readyz;
-        access_log off;
-    }
-}
-```
-
-### Caddy Example
-
-```caddyfile
-medassist.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| `error` | Only errors | Production (minimal logging) |
+| `warn` | Errors and warnings | Production |
+| `info` | Informational messages | Production, Development |
+| `debug` | Debug information | Development, Troubleshooting |
+| `trace` | Very verbose | Deep debugging |
 
 ---
 
-## First Administrator
+## Database Management
 
-### Option 1: SQL Bootstrap (Current)
+### Migrations
 
-Until the CLI `create-admin` command is implemented, use SQL:
-
-```sql
--- Insert organization
-INSERT INTO organizations (id, name, slug) 
-VALUES ('<org-uuid>', 'My Organization', 'my-org');
-
--- Insert user
-INSERT INTO users (id, org_id, email, password_hash, display_name, roles, created_at, updated_at) 
-VALUES (
-    '<user-uuid>',
-    '<org-uuid>',
-    'admin@example.com',
-    '$argon2id$v=19$m=65536,t=3,p=4$...',  -- Use argon2 CLI to generate
-    'Administrator',
-    '{"admin": true, "clinician": true}',
-    NOW(),
-    NOW()
-);
-
--- Create session (optional, for immediate login)
-INSERT INTO sessions (id, user_id, org_id, token_hash, created_at, expires_at, revoked_at) 
-VALUES (
-    '<session-uuid>',
-    '<user-uuid>',
-    '<org-uuid>',
-    '$argon2id$v=19$...',  -- Hash of session token
-    NOW(),
-    NOW() + INTERVAL '24 hours',
-    NULL
-);
-```
-
-### Generate Argon2 Hash
+MedAssist OSS uses SQLx migrations for database schema management.
 
 ```bash
-# Install argon2 CLI
-cargo install argon2-cli
+# List migrations
+./target/release/medassist-cli migrate --help
 
-# Generate hash
-argon2 some-password -e -id -t 3 -m 16 -p 4
-# Output: $argon2id$v=19$m=65536,t=3,p=4$...
+# Apply pending migrations
+./target/release/medassist-cli migrate
+
+# Create database and apply migrations
+./target/release/medassist-cli setup
 ```
 
-### Option 2: CLI Command (Future)
+### Backups
+
+#### PostgreSQL Backup
 
 ```bash
-# When implemented:
-cargo run -p medassist-cli -- create-admin \
-  --email admin@example.com \
-  --password your-strong-password \
-  --org-name "My Organization" \
-  --display-name "Administrator"
+# Create backup
+sudo -u postgres pg_dump -Fc -d medassist -f /backup/medassist-$(date +%Y%m%d).dump
+
+# Restore backup
+sudo -u postgres pg_restore -d medassist -c /backup/medassist-20241016.dump
+
+# Automated backups (cron)
+0 2 * * * sudo -u postgres pg_dump -Fc -d medassist -f /backup/medassist-$(date +\%Y\%m\%d).dump
 ```
 
----
-
-## Backup and Restore
-
-### Database Backup
-
-#### PostgreSQL Dump
+#### Blob Store Backup
 
 ```bash
-# Full database dump
-pg_dump -U medassist -h localhost -p 5432 medassist > medassist_backup.sql
+# Backup blob store
+rsync -av /opt/medassist/data/blob-store/ /backup/blob-store/
 
-# Compressed dump
-pg_dump -U medassist -h localhost -p 5432 medassist | gzip > medassist_backup_$(date +%Y%m%d).sql.gz
-
-# Custom format (recommended for large databases)
-pg_dump -U medassist -h localhost -p 5432 -Fc medassist > medassist_backup.dump
+# Automated backups (cron)
+0 3 * * * rsync -av /opt/medassist/data/blob-store/ /backup/blob-store/
 ```
 
-#### Scheduled Backup
+### Monitoring
+
+#### PostgreSQL Monitoring
 
 ```bash
-# Add to crontab (daily at 2am)
-0 2 * * * pg_dump -U medassist -h localhost medassist | gzip > /backups/medassist_$(date +\%Y\%m\%d).sql.gz
+# Check database size
+sudo -u postgres psql -c "SELECT pg_size_pretty(pg_database_size('medassist'));"
 
-# Keep last 30 days
-0 3 * * * find /backups -name "medassist_*.sql.gz" -mtime +30 -delete
+# Check connection count
+sudo -u postgres psql -c "SELECT count(*) FROM pg_stat_activity WHERE datname = 'medassist';"
+
+# Check table sizes
+sudo -u postgres psql -d medassist -c "\dt+"
 ```
 
-### Blob Store Backup
+#### Application Monitoring
 
 ```bash
-# Copy blob directory
-tar -czvf medassist_blobs_$(date +%Y%m%d).tar.gz /var/lib/medassist/blobs
+# Check API health
+curl http://localhost:3000/healthz
 
-# Or use rsync
-rsync -av /var/lib/medassist/blobs/ /backups/medassist/blobs/
-```
+# Check readiness (DB connection)
+curl http://localhost:3000/readyz
 
-### Restore from Backup
+# Check logs
+journalctl -u medassist-api.service -f
 
-```bash
-# Stop application
-# systemctl stop medassist  # or docker stop medassist
-
-# Restore database
-psql -U medassist -h localhost -p 5432 medassist < medassist_backup.sql
-
-# Or for custom format
-pg_restore -U medassist -h localhost -p 5432 -d medassist medassist_backup.dump
-
-# Restore blobs
-rm -rf /var/lib/medassist/blobs/*
-tar -xzvf medassist_blobs.tar.gz -C /
-
-# Reapply migrations (if schema changed)
-cargo run -p medassist-cli -- migrate
-
-# Restart application
-# systemctl start medassist
-```
-
----
-
-## Monitoring
-
-### Health Endpoints
-
-| Endpoint | Purpose | Expected Response |
-|----------|---------|-----------------|
-| `GET /healthz` | Liveness check | HTTP 200, `{"status":"ok","version":"..."}` |
-| `GET /readyz` | Readiness check (includes DB) | HTTP 200 if DB connected, 503 otherwise |
-
-### Metrics (Future)
-
-- Prometheus metrics endpoint (planned)
-- Request count and latency
-- Database connection pool status
-- Error rates
-
-### Logging
-
-**Log Levels:**
-- `ERROR`: Critical failures, security events
-- `WARN`: Unexpected but recoverable situations
-- `INFO`: Normal operations, requests
-- `DEBUG`: Detailed debugging (development only)
-- `TRACE`: Very verbose (development only)
-
-**Log Format:**
-```json
-{
-  "timestamp": "2026-10-16T12:34:56.789Z",
-  "level": "INFO",
-  "target": "medassist_api::routes",
-  "message": "Request completed",
-  "method": "GET",
-  "path": "/patients",
-  "status": 200,
-  "duration_ms": 45,
-  "user_id": "...",
-  "org_id": "..."
-}
-```
-
-**Note:** Clinical content is **never** logged. Audit events record metadata only.
-
----
-
-## Scaling
-
-### Vertical Scaling
-
-- Increase CPU/RAM for the application server
-- PostgreSQL can handle significant load with proper tuning
-- For AI inference: GPU recommended for local models
-
-### Horizontal Scaling (Future)
-
-- Stateless API servers can be scaled horizontally
-- PostgreSQL read replicas for read-heavy workloads
-- Redis for session caching (future)
-- Shared blob storage (S3-compatible) for multi-instance deployments
-
-### Database Tuning
-
-```conf
-# postgresql.conf recommendations
-shared_buffers = 4GB                   # 25% of total RAM
-work_mem = 16MB                        # For complex sorts
-maintenance_work_mem = 512MB          # For VACUUM, index creation
-effective_cache_size = 12GB           # 75% of total RAM
-max_connections = 100                 # Adjust based on application needs
-
-# For MedAssist OSS workload (many reads, some writes)
-random_page_cost = 1.1                # SSD storage
-max_worker_processes = 4              # Number of CPU cores
-max_parallel_workers_per_gather = 2
-max_parallel_workers = 8
+# Check resource usage
+top -u medassist
 ```
 
 ---
 
 ## Security Hardening
 
-### PostgreSQL
-
-```sql
--- Create dedicated user with limited privileges
-CREATE USER medassist_app WITH PASSWORD 'strong-password';
-GRANT CONNECT ON DATABASE medassist TO medassist_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medassist_app;
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO medassist_app;
-
--- For read-only reporting user
-CREATE USER medassist_ro WITH PASSWORD 'strong-password';
-GRANT CONNECT ON DATABASE medassist TO medassist_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO medassist_ro;
-```
-
-### Application
-
-- Run as non-root user
-- Use read-only filesystem where possible
-- Enable SELinux/AppArmor (Linux)
-- Use container security (if using Docker)
-
-### Network
-
-- Firewall: Only allow 8080 from trusted IPs
-- Database: Only allow from application server
-- Rate limiting: Configure at reverse proxy
-- Fail2Ban: For SSH and repeated failed logins
-
----
-
-## Upgrading
-
-### Application Upgrade
+### 1. PostgreSQL Security
 
 ```bash
-# Pull latest code
-git pull origin main
+# Create dedicated user with limited privileges
+sudo -u postgres psql -c "
+    CREATE ROLE medassist_app WITH LOGIN PASSWORD 'secure_password';
+    GRANT CONNECT ON DATABASE medassist TO medassist_app;
+    GRANT USAGE ON SCHEMA public TO medassist_app;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO medassist_app;
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO medassist_app;
+"
 
-# Update dependencies
-cargo update
+# Enable SSL
+# Edit postgresql.conf
+ssl = on
+ssl_cert_file = '/etc/ssl/certs/server.crt'
+ssl_key_file = '/etc/ssl/private/server.key'
 
-# Rebuild
-cargo build --release -p medassist-api
-
-# Apply migrations (if any)
-cargo run -p medassist-cli -- migrate
-
-# Restart service
-systemctl restart medassist
+# Restrict access
+# Edit pg_hba.conf
+hostssl medassist medassist_app 127.0.0.1/32 md5
 ```
 
-### Database Migration
-
-Migrations are applied automatically via `sqlx`:
+### 2. System Security
 
 ```bash
-# Check for new migrations
-sqlx migrate info
+# Create dedicated user
+sudo useradd -r -s /bin/false medassist
 
-# Apply pending migrations
-sqlx migrate run
+# Set proper permissions
+sudo chown -R medassist:medassist /opt/medassist
+sudo chmod -R 750 /opt/medassist
 
-# Rollback (if needed)
-sqlx migrate revert
+# Enable firewall
+sudo ufw allow 22/tcp       # SSH
+sudo ufw allow 80/tcp       # HTTP
+sudo ufw allow 443/tcp      # HTTPS
+sudo ufw enable
+
+# Enable automatic security updates
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades
+```
+
+### 3. Application Security
+
+```bash
+# Generate strong secret key
+openssl rand -base64 64
+
+# Set secure permissions on .env file
+chmod 600 /opt/medassist/.env
+
+# Use HTTPS only
+# Configure reverse proxy with TLS
 ```
 
 ---
@@ -669,88 +923,424 @@ sqlx migrate revert
 
 #### 1. Database Connection Failed
 
-```
-Error: connection to server at "localhost:5432" failed
-```
+**Symptoms:**
+- `Connection refused` error
+- `readyz` endpoint fails
 
 **Solutions:**
-- Verify PostgreSQL is running: `pg_isready`
-- Check connection string in `.env`
-- Verify credentials
-- Check firewall settings
+- Verify PostgreSQL is running: `sudo systemctl status postgresql`
+- Check connection URL in `.env` file
+- Test connection manually: `psql -U medassist -d medassist -h localhost`
+- Check firewall: `sudo ufw status`
 
 #### 2. Migration Failed
 
-```
-Error: migration "20261017000001_schema.sql" failed
-```
+**Symptoms:**
+- Migration errors during setup
+- Database schema mismatch
 
 **Solutions:**
-- Check PostgreSQL version (requires 14+)
+- Check migration files exist in `migrations/` directory
 - Verify database user has sufficient privileges
-- Check for existing tables (migrations must be applied in order)
+- Check PostgreSQL logs: `sudo journalctl -u postgresql -f`
+- Manually apply migrations if needed
 
-#### 3. Blob Store Permission Denied
+#### 3. Build Failed
 
-```
-Error: Permission denied (os error 13)
-```
-
-**Solutions:**
-- Create blob directory: `mkdir -p /var/lib/medassist/blobs`
-- Set permissions: `chown -R medassist:medassist /var/lib/medassist/blobs`
-- Verify `MEDASSIST_BLOB_DIR` points to correct path
-
-#### 4. Port Already in Use
-
-```
-Error: Address already in use (os error 98)
-```
+**Symptoms:**
+- Cargo build errors
+- Dependency resolution failures
 
 **Solutions:**
-- Check running processes: `lsof -i :8080`
-- Kill existing process: `kill <PID>`
-- Or change `MEDASSIST_BIND` to different port
+- Update Rust: `rustup update`
+- Clean build: `cargo clean`
+- Update dependencies: `cargo update`
+- Check disk space: `df -h`
+- Check memory: `free -h`
+
+#### 4. Permission Denied
+
+**Symptoms:**
+- File access errors
+- Blob store write failures
+
+**Solutions:**
+- Check file permissions: `ls -la /opt/medassist/data`
+- Set correct ownership: `sudo chown -R medassist:medassist /opt/medassist`
+- Create directory if missing: `mkdir -p /opt/medassist/data/blob-store`
 
 #### 5. Out of Memory
 
+**Symptoms:**
+- Application crashes with OOM error
+- Slow performance
+
 **Solutions:**
-- Increase system memory
-- Reduce PostgreSQL `shared_buffers`
+- Increase system memory or swap
+- Reduce `MAX_CONNECTIONS` in `.env`
+- Optimize PostgreSQL memory settings
 - Use smaller AI models
-- Enable swap (temporary solution)
+
+### Debug Mode
+
+Enable debug logging for troubleshooting:
+
+```bash
+# Set RUST_LOG to debug
+RUST_LOG=debug ./target/release/medassist-api
+
+# Or update .env file
+RUST_LOG=debug
+```
+
+### Log Analysis
+
+```bash
+# View application logs
+journalctl -u medassist-api.service -f
+
+# View PostgreSQL logs
+sudo journalctl -u postgresql -f
+
+# View system logs
+sudo journalctl -f
+```
 
 ---
 
-## Support
+## Upgrading
+
+### Upgrade Process
+
+```bash
+# Stop application
+sudo systemctl stop medassist-api.service
+
+# Backup database
+sudo -u postgres pg_dump -Fc -d medassist -f /backup/medassist-$(date +%Y%m%d).dump
+
+# Backup blob store
+rsync -av /opt/medassist/data/blob-store/ /backup/blob-store/
+
+# Pull latest code
+cd /opt/medassist
+git pull origin main
+
+# Rebuild
+cargo build --release --workspace
+
+# Run migrations (if any)
+./target/release/medassist-cli migrate
+
+# Restart application
+sudo systemctl start medassist-api.service
+
+# Verify
+curl http://localhost:3000/healthz
+```
+
+### Migration Notes
+
+Check the `CHANGELOG.md` file for version-specific upgrade instructions and breaking changes.
+
+---
+
+## Performance Tuning
+
+### PostgreSQL Tuning
+
+Adjust `postgresql.conf` based on available memory:
+
+```ini
+# For 8GB RAM system
+shared_buffers = 2GB
+effective_cache_size = 6GB
+maintenance_work_mem = 512MB
+work_mem = 16MB
+max_connections = 100
+```
+
+### Application Tuning
+
+Adjust `.env` file:
+
+```ini
+# For high-traffic systems
+MAX_CONNECTIONS=20
+PORT=3000
+HOST=0.0.0.0
+RUST_LOG=warn
+```
+
+### Ollama Tuning
+
+For GPU systems:
+
+```ini
+# In ollama service configuration
+Environment="OLLAMA_MAX_LOADED_MODELS=2"
+Environment="OLLAMA_KEEP_ALIVE=24h"
+```
+
+---
+
+## Monitoring and Alerting
+
+### Prometheus + Grafana (Future)
+
+Configure Prometheus to scrape metrics from MedAssist OSS (future feature).
+
+### Health Check Endpoints
+
+| Endpoint | Description | Expected Response |
+|----------|-------------|-------------------|
+| `GET /healthz` | Liveness probe | `200 OK` |
+| `GET /readyz` | Readiness probe (with DB check) | `200 OK` |
+
+### Alert Rules
+
+Example alert rules for Prometheus:
+
+```yaml
+- alert: MedAssistDown
+  expr: up{job="medassist-api"} == 0
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "MedAssist API is down"
+    description: "MedAssist API has been down for more than 5 minutes"
+
+- alert: HighErrorRate
+  expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.1
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "High error rate on MedAssist API"
+    description: "Error rate is {{ $value }}%"
+```
+
+---
+
+## Disaster Recovery
+
+### Backup Strategy
+
+| Data | Frequency | Retention | Storage |
+|------|-----------|-----------|---------|
+| Database | Daily | 30 days | Encrypted, offsite |
+| Blob Store | Daily | 30 days | Encrypted, offsite |
+| Configuration | On change | Forever | Version controlled |
+| Logs | Daily | 90 days | Encrypted, offsite |
+
+### Recovery Procedure
+
+1. **Restore Database:**
+   ```bash
+   # Create new database
+   sudo -u postgres createdb medassist
+   
+   # Restore from backup
+   sudo -u postgres pg_restore -d medassist -c /backup/medassist-20241016.dump
+   ```
+
+2. **Restore Blob Store:**
+   ```bash
+   # Restore from backup
+   rsync -av /backup/blob-store/ /opt/medassist/data/blob-store/
+   ```
+
+3. **Restore Configuration:**
+   ```bash
+   # Restore from version control
+   cd /opt/medassist
+   git checkout main
+   git pull origin main
+   ```
+
+4. **Restart Application:**
+   ```bash
+   sudo systemctl restart medassist-api.service
+   ```
+
+---
+
+## Compliance Checklist
+
+### Pre-Deployment Checklist
+
+- [ ] PostgreSQL installed and configured
+- [ ] Rust toolchain installed
+- [ ] Environment variables configured
+- [ ] Database created and migrations applied
+- [ ] Administrator user created
+- [ ] TLS certificates configured
+- [ ] Reverse proxy configured
+- [ ] Firewall configured
+- [ ] Backup procedures in place
+- [ ] Monitoring configured
+- [ ] Security hardening applied
+
+### Post-Deployment Checklist
+
+- [ ] Health checks passing
+- [ ] All services running
+- [ ] Logs being collected
+- [ ] Backups verified
+- [ ] Monitoring alerts configured
+- [ ] Incident response procedures documented
+- [ ] User training completed
+- [ ] Privacy policy updated
+- [ ] Security assessment completed
+
+---
+
+## Support and Community
 
 ### Getting Help
 
-1. **Documentation:** Check this guide and other docs
-2. **Issues:** Open an issue on GitHub with:
-   - Rust version (`rustc --version`)
-   - OS and version
-   - Exact error message
-   - Steps to reproduce
-3. **Community:** (Future: Discord, forum)
+1. **Documentation:** Read this guide and other documentation in the `docs/` directory
+2. **Issues:** Check for existing issues on [GitHub Issues](https://github.com/Lucasovski/MEDASSIST-OSS/issues)
+3. **Discussions:** Join the discussion on [GitHub Discussions](https://github.com/Lucasovski/MEDASSIST-OSS/discussions)
+4. **Community:** Join the MedAssist OSS community (future)
 
-### Reporting Security Issues
+### Reporting Issues
 
-See [SECURITY.md](../SECURITY.md) for vulnerability reporting procedures.
+When reporting issues, include:
+- Version of MedAssist OSS
+- Operating system and version
+- PostgreSQL version
+- Rust version
+- Steps to reproduce
+- Error messages and logs
+- Configuration (sanitized)
+
+### Contributing
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for information on contributing to MedAssist OSS.
 
 ---
 
-## Checklist: Production Deployment
+## Appendix A: CLI Commands Reference
 
-- [ ] PostgreSQL installed and configured
-- [ ] Database created with proper user
-- [ ] Migrations applied
-- [ ] Environment variables configured
-- [ ] Blob storage directory created
-- [ ] Reverse proxy configured with TLS
-- [ ] Firewall configured
-- [ ] Backup strategy in place
-- [ ] Monitoring configured
-- [ ] First administrator created
-- [ ] Application running and healthy
-- [ ] Health endpoints responding
+| Command | Description | Options |
+|---------|-------------|---------|
+| `medassist migrate` | Apply database migrations | - |
+| `medassist setup` | Create database and apply migrations | - |
+| `medassist create-admin` | Create administrator user | `--org-name`, `--email`, `--password`, `--display-name` |
+| `medassist reset-password` | Reset user password | `--email`, `--password` |
+| `medassist check-db` | Verify database connection | - |
+
+### Examples
+
+```bash
+# Apply migrations
+./target/release/medassist-cli migrate
+
+# Setup database
+./target/release/medassist-cli setup
+
+# Create admin
+./target/release/medassist-cli create-admin \
+    --org-name "My Organization" \
+    --email admin@example.com \
+    --password "secure_password" \
+    --display-name "Admin User"
+
+# Reset password
+./target/release/medassist-cli reset-password \
+    --email user@example.com \
+    --password "new_password"
+
+# Check database
+./target/release/medassist-cli check-db
+```
+
+---
+
+## Appendix B: API Endpoints Reference
+
+### Health and Status
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/healthz` | Liveness probe |
+| GET | `/readyz` | Readiness probe |
+
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/login` | User login |
+| POST | `/logout` | User logout |
+| GET | `/sessions/me` | Get current session |
+
+### Patients
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/patients` | List patients |
+| POST | `/patients` | Create patient |
+| GET | `/patients/:id` | Get patient |
+| PATCH | `/patients/:id` | Update patient |
+| DELETE | `/patients/:id` | Delete patient |
+
+### Encounters
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/patients/:id/encounters` | List encounters |
+| POST | `/patients/:id/encounters` | Create encounter |
+| GET | `/encounters/:id` | Get encounter |
+
+### Notes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/patients/:id/notes` | List notes |
+| POST | `/patients/:id/notes` | Create note |
+| GET | `/notes/:id` | Get note |
+| POST | `/notes/:id/review` | Review note |
+| POST | `/notes/:id/finalize` | Finalize note |
+| POST | `/notes/:id/amend` | Amend note |
+
+### Documents
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/documents` | List documents |
+| POST | `/documents/upload` | Upload document |
+| GET | `/documents/:id/download` | Download document |
+
+### Transcriptions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/transcriptions/consent` | Request consent |
+| POST | `/transcriptions/start` | Start transcription |
+| POST | `/transcriptions/:id/cancel` | Cancel transcription |
+| POST | `/transcriptions/:id/review` | Review transcription |
+
+### AI
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/ai/draft` | Generate AI draft |
+
+### System
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/system/capabilities` | Get capabilities |
+| GET | `/system/audit` | Get audit log |
+| GET | `/system/templates` | List templates |
+| GET | `/system/codes` | Search codes |
+
+---
+
+## Document History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | 2026-10-16 | MedAssist OSS Contributors | Initial deployment guide |
