@@ -125,7 +125,9 @@ async fn main() -> anyhow::Result<()> {
 async fn connect_db() -> anyhow::Result<Db> {
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/medassist".to_string());
-    Db::connect(&db_url, 5).await.map_err(|e| anyhow::anyhow!("Database connection failed: {}", e))
+    Db::connect(&db_url, 5)
+        .await
+        .map_err(|e| anyhow::anyhow!("Database connection failed: {}", e))
 }
 
 /// Create the database if it doesn't exist
@@ -136,14 +138,16 @@ async fn create_database() -> anyhow::Result<()> {
     let admin_url = format_admin_url(&db_url);
 
     // Check if database exists
-    let admin_pool = PgPool::connect(&admin_url).await
+    let admin_pool = PgPool::connect(&admin_url)
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to connect to admin database: {}", e))?;
 
-    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)")
-        .bind(&db_name)
-        .fetch_one(&admin_pool)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to check database existence: {}", e))?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)")
+            .bind(&db_name)
+            .fetch_one(&admin_pool)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to check database existence: {}", e))?;
 
     if !exists {
         sqlx::query(&format!("CREATE DATABASE \"{}\"", db_name))
@@ -162,7 +166,10 @@ async fn create_database() -> anyhow::Result<()> {
 async fn run_migrations(db: &Db) -> anyhow::Result<()> {
     let migration_path = Path::new("migrations");
     if !migration_path.exists() {
-        anyhow::bail!("Migrations directory not found at: {}", migration_path.display());
+        anyhow::bail!(
+            "Migrations directory not found at: {}",
+            migration_path.display()
+        );
     }
 
     db.migrate(migration_path)
@@ -184,14 +191,12 @@ async fn create_admin(
 
     // Create organization
     let org_id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO organisations (id, name) VALUES ($1, $2)",
-    )
-    .bind(org_id)
-    .bind(org_name)
-    .execute(db.pool())
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to create organization: {}", e))?;
+    sqlx::query("INSERT INTO organisations (id, name) VALUES ($1, $2)")
+        .bind(org_id)
+        .bind(org_name)
+        .execute(db.pool())
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create organization: {}", e))?;
 
     // Hash password
     let salt = SaltString::generate(&mut OsRng);
