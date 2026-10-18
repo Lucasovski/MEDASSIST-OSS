@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use medassist_application::{
-    ai::{ClinicalDocumentationEngine, LanguageModelProvider},
+    ai::LanguageModelProvider,
     audit::{AuditLister, AuditService},
     auth::AuthService,
     documents::DocumentService,

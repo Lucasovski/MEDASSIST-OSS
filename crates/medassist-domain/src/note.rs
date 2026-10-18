@@ -107,7 +107,7 @@ impl SoapContent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NoteBody {
-    Soap(SoapContent),
+    Soap(Box<SoapContent>),
     FreeText { text: String, provenance: Provenance, reviewed: bool },
 }
 
@@ -288,7 +288,7 @@ mod tests {
     use crate::prov::{ProvenanceKind, SourceRef};
 
     fn soap_with_ai_assessment(author: Uuid) -> NoteBody {
-        NoteBody::Soap(SoapContent {
+        NoteBody::Soap(Box::new(SoapContent {
             subjective: Some(SoapSection::professional(author, "cefaleia há 3 dias")),
             objective: Some(SoapSection::professional(author, "PA 130x85, FC 78")),
             assessment: Some(SoapSection {
@@ -300,7 +300,7 @@ mod tests {
                 reviewed: false,
             }),
             plan: None,
-        })
+        }))
     }
 
     fn mk_note(author: Uuid) -> Note {
@@ -372,14 +372,14 @@ mod tests {
     #[test]
     fn ai_only_note_cannot_be_finalised_without_override_even_when_reviewed_flag_absent() {
         let author = Uuid::new_v4();
-        let body = NoteBody::Soap(SoapContent {
+        let body = NoteBody::Soap(Box::new(SoapContent {
             subjective: Some(SoapSection {
                 text: "relato do paciente".into(),
                 provenance: Provenance::new(ProvenanceKind::Transcription, SourceRef::Transcription { id: Uuid::new_v4(), start_ms: None, end_ms: None }),
                 reviewed: false,
             }),
             ..Default::default()
-        });
+        }));
         let mut n = Note::new_draft(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), author, body, Utc::now());
         assert!(n.finalise(author, Utc::now(), false).is_err());
         // Explicit override is allowed (and would be audited at app layer).

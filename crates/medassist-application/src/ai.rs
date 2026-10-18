@@ -159,7 +159,7 @@ pub fn validate_draft(
         })
     };
 
-    Ok(NoteBody::Soap(SoapContent {
+    Ok(NoteBody::Soap(Box::new(SoapContent {
         subjective: mk(draft.subjective.clone()),
         objective: mk(draft.objective.clone()),
         assessment: mk(draft.assessment.clone()),

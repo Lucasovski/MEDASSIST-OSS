@@ -195,7 +195,7 @@ mod tests {
     fn duplicate_score_flags_exact_external_id_and_dob() {
         let now = Utc::now();
         let eid = ExternalIdentifier { system: crate::identifier::ExternalIdSystem::Mrn, value: "MRN-1".into(), issuer: None };
-        let base = sample();
+        let _base = sample();
         let existing = {
             let mut q = sample();
             q.external_ids = vec![eid.clone()];
