@@ -37,24 +37,27 @@ pub struct Authed(pub Actor);
 
 impl axum::extract::FromRequestParts<AppState> for Authed {
     type Rejection = ApiError;
-    async fn from_request_parts(
-        parts: &mut axum::http::request::Parts,
-        state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
+
+    #[allow(clippy::manual_async_fn)]
+    fn from_request_parts<'a>(
+        parts: &'a mut axum::http::request::Parts,
+        state: &'a AppState,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self, Self::Rejection>> + Send + 'a>> {
         let _ = state;
-        parts
+        let res = parts
             .extensions
             .get::<Authed>()
             .cloned()
-            .ok_or_else(ApiError::unauthorized)
+            .ok_or_else(ApiError::unauthorized);
+        Box::pin(async move { res })
     }
 }
 
 #[axum::debug_handler]
 async fn require_auth(
     State(st): State<AppState>,
-    next: Next,
     req: Request,
+    next: Next,
 ) -> Response {
     {
         let token = extract_token(&req).to_string();
@@ -142,10 +145,7 @@ pub fn api_v1(st: AppState) -> Router<AppState> {
         .route("/auth/logout", axum::routing::post(logout))
         .layer(middleware::from_fn_with_state(st.clone(), require_auth));
 
-    let public = Router::new().route("/auth/login", post({
-        let st = st.clone();
-        move |Json(r): Json<LoginReq>| login(st.clone(), Json(r))
-    }));
+    let public = Router::new().route("/auth/login", post(login));
 
     public.merge(authed).with_state(st)
 }
@@ -361,11 +361,10 @@ fn now() -> DateTime<Utc> {
 // Auth handlers
 // ---------------------------------------------------------------------------
 
-fn login(
-    st: AppState,
+async fn login(
+    State(st): State<AppState>,
     Json(req): Json<LoginReq>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Response, ApiError>> + Send>> {
-    Box::pin(async move {
+) -> Result<Response, ApiError> {
     let (token, actor) = st.auth.login(&req.email, &req.password, now()).await?;
     let cookie = format!(
         "medassist_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800"
@@ -381,11 +380,13 @@ fn login(
             resp,
         )
             .into_response())
-    })
 }
 
 #[axum::debug_handler]
-async fn logout(State(st): State<AppState>, req: Request) -> Result<Json<serde_json::Value>, ApiError> {
+async fn logout(
+    State(st): State<AppState>,
+    req: Request,
+) -> Result<Json<serde_json::Value>, ApiError> {
     let token = extract_token(&req).to_string();
     st.auth.logout(&token, now()).await.map_err(ApiError::from)?;
     Ok(Json(serde_json::json!({ "ok": true })))
@@ -443,8 +444,8 @@ async fn create_patient(
 #[axum::debug_handler]
 async fn list_patients(
     State(st): State<AppState>,
-    req: Request,
     Query(q): Query<SearchQuery>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let (limit, offset) = clamp_page(q.limit, q.offset);
@@ -463,8 +464,8 @@ async fn list_patients(
 #[axum::debug_handler]
 async fn get_patient(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let p = st.patients.get(&actor, id).await?;
@@ -514,8 +515,8 @@ async fn update_patient(
 #[axum::debug_handler]
 async fn delete_patient(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     st.patients.soft_delete(&actor, id, now()).await?;
@@ -555,9 +556,9 @@ async fn create_encounter(
 #[axum::debug_handler]
 async fn list_encounters(
     State(st): State<AppState>,
-    req: Request,
     Path(patient_id): Path<Uuid>,
     Query(q): Query<SearchQuery>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let (limit, offset) = clamp_page(q.limit, q.offset);
@@ -570,8 +571,8 @@ async fn list_encounters(
 #[axum::debug_handler]
 async fn get_encounter(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let e = st.encounters.get(&actor, id).await?;
@@ -631,8 +632,8 @@ async fn create_note(
 #[axum::debug_handler]
 async fn list_notes(
     State(st): State<AppState>,
-    req: Request,
     Path(encounter_id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let ns = st.notes.list_for_encounter(&actor, encounter_id).await?;
@@ -642,8 +643,8 @@ async fn list_notes(
 #[axum::debug_handler]
 async fn get_note(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let n = st.notes.get(&actor, id).await?;
@@ -699,8 +700,8 @@ async fn amend_note(
 #[axum::debug_handler]
 async fn list_versions(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     // Read directly from the version store through the note repo port is not
@@ -783,8 +784,8 @@ async fn upload_document(
 #[axum::debug_handler]
 async fn get_document(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let d = st.documents.get(&actor, id).await?;
@@ -794,8 +795,8 @@ async fn get_document(
 #[axum::debug_handler]
 async fn download_document(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Response, ApiError> {
     let actor = actor_of(&req)?;
     let d = st.documents.get(&actor, id).await?;
@@ -816,8 +817,8 @@ async fn download_document(
 #[axum::debug_handler]
 async fn review_document(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     st.documents.mark_reviewed(&actor, id).await?;
@@ -827,9 +828,9 @@ async fn review_document(
 #[axum::debug_handler]
 async fn list_patient_documents(
     State(st): State<AppState>,
-    req: Request,
     Path(patient_id): Path<Uuid>,
     Query(q): Query<SearchQuery>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let (limit, offset) = clamp_page(q.limit, q.offset);
@@ -873,8 +874,8 @@ async fn start_transcription(
 #[axum::debug_handler]
 async fn get_transcription(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let t = st.transcriptions.get(&actor, id).await?;
@@ -884,8 +885,8 @@ async fn get_transcription(
 #[axum::debug_handler]
 async fn cancel_transcription(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     st.transcriptions.cancel(&actor, id, now()).await?;
@@ -895,8 +896,8 @@ async fn cancel_transcription(
 #[axum::debug_handler]
 async fn review_transcription(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     st.transcriptions.mark_reviewed(&actor, id, now()).await?;
@@ -906,8 +907,8 @@ async fn review_transcription(
 #[axum::debug_handler]
 async fn transcription_draft_body(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let body = st.transcriptions.to_draft_note_body(&actor, id).await?;
@@ -976,8 +977,8 @@ async fn create_ai_draft(
 #[axum::debug_handler]
 async fn get_job(
     State(st): State<AppState>,
-    req: Request,
     Path(id): Path<Uuid>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     use medassist_application::ports::JobRepository;
     let actor = actor_of(&req)?;
@@ -1010,8 +1011,8 @@ async fn list_templates(
 #[axum::debug_handler]
 async fn search_codes(
     State(st): State<AppState>,
-    req: Request,
     Query(q): Query<CodeSearchDto>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let _ = &actor;
@@ -1023,8 +1024,8 @@ async fn search_codes(
 #[axum::debug_handler]
 async fn list_audit(
     State(st): State<AppState>,
-    req: Request,
     Query(q): Query<AuditQuery>,
+    req: Request,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let actor = actor_of(&req)?;
     let (limit, offset) = clamp_page(q.limit, q.offset);

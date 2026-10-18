@@ -1,7 +1,13 @@
-target/
+/target/
 .env
+.env.local
+*.env.*
 nohup.out
-/var/
 *.log
-medassist-oss.zip
-medassist-oss-export/
+*.tmp
+*.swp
+*.swo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
